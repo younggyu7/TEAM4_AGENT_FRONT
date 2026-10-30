@@ -264,9 +264,12 @@ function ReviewProgress({ name, review, finalizedAt, current, note, noteTone }: 
 }
 
 function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version: string }) {
+  // 이 버전을 만든 모델 (검토 보고서 'LLM 사용량'의 '- 모델:' 줄. 예전 버전은 기록 없음)
+  const model = usages.state === 'ready' ? usages.data.find((u) => u.version === version)?.usage?.model : undefined
   return (
     <Card aria-labelledby="tokens-title">
-      <CardHeader eyebrow="Tokens" title="토큰 사용량" titleId="tokens-title" />
+      <CardHeader eyebrow="Tokens" titleId="tokens-title"
+        title={<>토큰 사용량 <span className="font-normal text-fg-3">| (사용 모델: {model ?? (usages.state === 'loading' ? '…' : '기록 없음')})</span></>} />
       <div className="px-5 pb-5">
         {usages.state === 'loading' && <Loading label="토큰 사용량을 읽는 중" lines={4} />}
         {usages.state === 'error' && <p role="alert" className="text-small text-danger">사용량을 읽지 못했습니다: {usages.message}</p>}

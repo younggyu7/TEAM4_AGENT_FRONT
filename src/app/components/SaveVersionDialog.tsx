@@ -4,7 +4,7 @@ import { getCapabilities } from '../../api'
 import type { Design } from '../../types'
 import type { Draft } from '../lib/draft'
 import { startJob } from '../lib/jobs'
-import { assumptionId, isRequirementQuestion, newAnswers, ruleMark } from '../lib/review'
+import { assumptionId, isRequirementQuestion, isStackQuestion, newAnswers, ruleMark } from '../lib/review'
 import { functionsMd, specChanges, specChangeText } from '../lib/specMd'
 import { Button, IconButton, Label, TextArea, TextInput } from './ui'
 
@@ -47,7 +47,8 @@ export function SaveVersionDialog({ mode, aiAnswers, open, onClose, draft, desig
     .filter((r) => ruleMark(r)?.kind === 'unconfirmed' && draft.state.checked[assumptionId(f.function_id, r)])
     .map((rule) => ({ function_id: f.function_id, rule }))) : []), [mode, draft.functions, draft.state.checked])
   const answering = Boolean(aiAnswers) && freshIds.length > 0
-  const freshDiffer = design.questions.filter((q) => fresh[q.question_id] && fresh[q.question_id] !== (q.recommended ?? '').trim()).length
+  // 추천과 다른 답 중 기능 규칙을 바꾸는 것 (기술 스택은 개발 스펙에만 쓰여 규칙을 바꾸지 않는다)
+  const freshDiffer = design.questions.filter((q) => fresh[q.question_id] && !isStackQuestion(q) && fresh[q.question_id] !== (q.recommended ?? '').trim()).length
   const freshRequirement = design.questions.filter((q) => fresh[q.question_id] && isRequirementQuestion(q)).length
   const md = useMemo(
     () => (mode === 'spec' ? functionsMd(draft.merged, draft.functions, `웹에서 확정한 기능 명세 (수정 ${changes.length}건, 질문 답 ${answers}건)`) : ''),

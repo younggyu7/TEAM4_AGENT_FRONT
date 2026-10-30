@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getDesign, getFile, getSpecFormat, listProjects } from '../../api'
 import type { Design, Project } from '../../types'
 
@@ -21,17 +21,36 @@ export function clearCache() {
   cache.clear()
 }
 
+// 한 버전의 산출물이 서버에서 바뀌었을 때(기술 스택 확정 등) 그 버전의 design·파일만 다시 부른다
+const listeners = new Set<(prefix: string) => void>()
+
+export function refreshVersion(project: string, version: string) {
+  for (const prefix of [`design:${project}@${version}`, `file:${project}@${version}/`]) {
+    for (const key of [...cache.keys()]) if (key.startsWith(prefix)) cache.delete(key)
+    listeners.forEach((fn) => fn(prefix))
+  }
+}
+
 function useLoad<T>(key: string | null, load: () => Promise<T>, deps: unknown[]): Load<T> {
   const [value, setValue] = useState<Load<T>>({ state: 'loading' })
+  const [tick, setTick] = useState(0)
+  const shown = useRef<string | null>(null)   // 지금 보여 주는 값의 키 (같은 키를 다시 부를 때는 이전 값을 둔 채 바꾼다)
+  useEffect(() => {
+    if (key === null) return
+    const onRefresh = (prefix: string) => { if (key.startsWith(prefix)) setTick((t) => t + 1) }
+    listeners.add(onRefresh)
+    return () => { listeners.delete(onRefresh) }
+  }, [key])
   useEffect(() => {
     if (key === null) return
     let cancelled = false
-    setValue({ state: 'loading' })
+    if (shown.current !== key) setValue({ state: 'loading' })
+    shown.current = key
     cached(key, load)
       .then((data) => { if (!cancelled) setValue({ state: 'ready', data }) })
       .catch((e: Error) => { if (!cancelled) setValue({ state: 'error', message: e.message }) })
     return () => { cancelled = true }
-  }, [key, ...deps])
+  }, [key, tick, ...deps])
   return value
 }
 
@@ -57,14 +76,17 @@ export interface Usage {
   calls: number
   input: number
   output: number
+  /** 그 버전을 만든 LLM 모델 ('- 모델:' 줄). 이 줄이 생기기 전에 만든 버전은 없다 */
+  model?: string
 }
 
+const MODEL_LINE = /^- 모델:\s*(.+)$/m
 const USAGE_LINE = /호출\s*([\d,]+)회\s*·\s*입력 토큰\s*([\d,]+)\s*·\s*출력 토큰\s*([\d,]+)/
 const num = (s: string) => Number(s.replace(/,/g, ''))
 
 export function parseUsage(report: string | null): Usage | null {
   const m = report && USAGE_LINE.exec(report)
-  return m ? { calls: num(m[1]), input: num(m[2]), output: num(m[3]) } : null
+  return m ? { calls: num(m[1]), input: num(m[2]), output: num(m[3]), model: MODEL_LINE.exec(report)?.[1].trim() } : null
 }
 
 export interface VersionUsage {

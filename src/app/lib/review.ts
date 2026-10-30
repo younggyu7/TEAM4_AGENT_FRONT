@@ -56,11 +56,12 @@ const REQUIREMENT_STAGES = new Set(['requirements', 'requirement_reviewer'])
 export const isRequirementQuestion = (q: Question) => REQUIREMENT_STAGES.has(q.stage ?? 'requirements')
 
 /**
- * 데이터 설계(DQ-…)·개발 스펙 기술 스택(TQ-…) 질문: 화면에서 답하지 않는다.
- * ERD 만들기·최종 확정은 질문에서 멈추지 않고 추천안으로 가정한다 (기술 스택은 최종본의 개발 스펙 탭에 가정으로 표시).
+ * 데이터 설계(DQ-…) 질문: 화면에서 답하지 않는다 (ERD 만들기는 질문에서 멈추지 않고 추천안으로 가정).
+ * 기술 스택(TQ-001)은 기능 명세 초안에서 코드가 낸 필수 질문이라 기능 명세 화면에서 답한다 (답은 최종본의 개발 스펙에만).
  */
-const ERD_STAGES = new Set(['data_modeler', 'api_designer'])
-export const isErdQuestion = (q: Question) => ERD_STAGES.has(q.stage ?? '')
+export const isErdQuestion = (q: Question) => q.stage === 'data_modeler'
+/** 개발 스펙의 기술 스택 질문: 답해도 기능 명세 규칙·ERD는 바뀌지 않는다 */
+export const isStackQuestion = (q: Question) => q.stage === 'api_designer'
 
 /** 기능 명세 화면에서 새로 답한 질문 (질문 ID → 답). 내보내기 때 코드로 반영하거나 'AI로 답 반영'으로 넘긴다 */
 export function newAnswers(design: Design, draft: DraftState): Record<string, string> {
@@ -96,7 +97,8 @@ export function specReview(design: Design, functions: FunctionSpec[], draft: Dra
       requirement && q.requirement_ids.length ? `관련 요구사항: ${q.requirement_ids.join(', ')}` : '',
       q.recommended ? `지금 초안은 추천안 '${q.recommended}'을(를) 가정해 만들었습니다.` : '',
       // 내보낼 때 코드는 표시가 붙은 규칙만 답으로 바꾼다. 흐름·입력·데이터 등 다른 칸은 사람이 확인한다
-      differs ? `⚠ 추천안과 다른 답입니다. 내보낼 때 해당 규칙은 이 답으로 바뀝니다. 관련 기능의 흐름·입력·데이터도 확인하세요 (필요하면 오른쪽 위 'AI로 답 반영').` : '',
+      isStackQuestion(q) ? '답은 \'ERD 최종 확정\' 때 만드는 개발 스펙(AGENTS·ARCHITECTURE·TASKS)에만 쓰입니다. 기능 명세·ERD는 바뀌지 않습니다 (LLM 사용 없음).' : '',
+      differs && !isStackQuestion(q) ? `⚠ 추천안과 다른 답입니다. 내보낼 때 해당 규칙은 이 답으로 바뀝니다. 관련 기능의 흐름·입력·데이터도 확인하세요 (필요하면 오른쪽 위 'AI로 답 반영').` : '',
     ].filter(Boolean)
     items.push({
       id: `q:${q.question_id}`,

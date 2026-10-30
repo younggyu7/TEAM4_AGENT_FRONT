@@ -45,8 +45,9 @@ export function DevSpecView({ design, project, version, focus, onOpen }: {
         <div role="note" className="flex flex-wrap items-center gap-2 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2 text-small text-warn">
           <span className="min-w-0 flex-1">
             원문에 개발 언어·프레임워크가 없어 추천안({stackQuestion.recommended})을 가정으로 썼습니다 ({stackQuestion.question_id}).
-            최종 확정은 질문에서 멈추지 않습니다. 다른 스택으로 정했으면 개발 AI에 넘길 때 AGENTS·ARCHITECTURE의 기술 스택을 고쳐 주세요.
+            최종 산출물 화면의 '개발 스펙 파일'에서 스택을 고르고 확정하면 LLM 없이 이 문서들이 다시 써집니다.
           </span>
+          <Button size="sm" variant="secondary" onClick={() => onOpen('final')}>스택 정하러 가기</Button>
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
