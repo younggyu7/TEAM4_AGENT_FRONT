@@ -1,7 +1,6 @@
-import { ArrowsClockwise, CaretDown, FolderSimple, House, List, SignOut, TreeStructure, X } from '@phosphor-icons/react'
+import { ArrowsClockwise, CaretDown, FolderSimple, House, List, SignOut, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Project } from '../../types'
-import { draftSummaries } from '../lib/draft'
 import type { Load } from '../lib/data'
 import type { Route } from '../lib/route'
 import { initials, type User } from '../lib/session'
@@ -140,9 +139,8 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
     : picked && !top.includes(picked) ? [...top.slice(0, PROJECTS_SHOWN - 1), picked] : top
 
   // 초안은 이 브라우저 저장소에 있으므로 화면을 옮길 때마다 다시 센다
-  const drafts = useMemo(() => draftSummaries(), [route])
-  const inProgress = drafts.filter((d) => d.edited > 0 && d.finalized === 0).length
-  const finalized = drafts.filter((d) => d.finalized > 0).length
+  // 서버의 버전 기록으로 센다 (어느 PC에서 보든 같다): 팀장이 최종본을 승인한 프로젝트 / 아직인 프로젝트
+  const approved = list.filter((p) => p.versions.some((v) => v.stage === 'final' && v.approval?.decision === 'approve')).length
 
   return (
     <div className="flex min-h-full flex-col gap-5 px-3 py-4">
@@ -159,7 +157,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-label font-semibold">{user.name}</p>
-            <p className="truncate text-small text-fg-3">{user.role}</p>
+            <p className="truncate text-small text-fg-3">{user.role_label}{user.is_admin ? ' · 관리자' : ''}</p>
           </div>
           <IconButton label="로그아웃" icon={<SignOut />} onClick={onSignOut}
             className="size-8 hover:bg-danger-soft hover:text-danger [&>svg]:size-[18px]" />
@@ -171,6 +169,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
       <nav aria-label="주 메뉴">
         <ul className="space-y-0.5">
           <NavItem icon={<House />} label="홈" active={route.name === 'home'} onClick={() => navigate({ name: 'home' })} />
+          {user.is_admin && <NavItem icon={<UsersThree />} label="관리자 페이지" active={route.name === 'members'} onClick={() => navigate({ name: 'members' })} />}
         </ul>
       </nav>
 
@@ -184,8 +183,8 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
         <h2 id="my-dashboard" className="eyebrow mb-2 px-1">My dashboard</h2>
         <dl className="grid grid-cols-3 gap-1.5">
           <MiniStat term="프로젝트" value={list.length} />
-          <MiniStat term="편집 중" value={inProgress} />
-          <MiniStat term="확정" value={finalized} />
+          <MiniStat term="진행 중" value={list.length - approved} />
+          <MiniStat term="최종 승인" value={approved} />
         </dl>
       </section>
 

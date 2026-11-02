@@ -5,6 +5,7 @@ import { PAGE_LABEL, useRoute, type Route } from './lib/route'
 import { useSession } from './lib/session'
 import { Home } from './pages/Home'
 import { Login } from './pages/Login'
+import { Members } from './pages/Members'
 import { Workspace } from './pages/Workspace'
 
 export function App() {
@@ -16,6 +17,7 @@ export function App() {
   const pending = useRef<Route | null>(null)
 
   useEffect(() => {
+    if (user === undefined) return   // 로그인 확인 중
     if (!user && route.name !== 'login') {
       pending.current = route
       navigate({ name: 'login' }, true)
@@ -28,6 +30,7 @@ export function App() {
   useEffect(() => {
     document.title = route.name === 'login' ? '로그인 · 설계 초안 작업실'
       : route.name === 'home' ? '홈 · 설계 초안 작업실'
+      : route.name === 'members' ? '관리자 페이지 · 설계 초안 작업실'
       : `${PAGE_LABEL[route.page]} · ${route.project} v${route.version}`
   }, [route])
 
@@ -36,6 +39,7 @@ export function App() {
     setReloadKey((k) => k + 1)
   }, [])
 
+  if (user === undefined) return <div role="status" className="grid min-h-dvh place-items-center bg-canvas text-label text-fg-3">로그인 확인 중…</div>
   if (!user || route.name === 'login') {
     return <Login onSignIn={signIn} />
   }
@@ -49,5 +53,6 @@ export function App() {
     onReloadProjects: reload,
   }
 
-  return route.name === 'workspace' ? <Workspace shell={shell} /> : <Home shell={shell} />
+  return route.name === 'workspace' ? <Workspace shell={shell} />
+    : route.name === 'members' && user.is_admin ? <Members shell={shell} /> : <Home shell={shell} />
 }

@@ -9,13 +9,106 @@ const BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$
 /** API 경로 → 요청 주소 (링크·다운로드처럼 fetch 밖에서 쓸 때) */
 export const apiUrl = (path: string) => BASE + path
 
+/** API 오류: 상태 코드도 함께 (401 = 로그인 필요, 403 = 권한 없음, 409 = 다른 사람이 먼저 저장 등) */
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message)
+  }
+}
+
+/** 로그인 세션이 끝났을 때(401) 화면이 로그인으로 돌아가도록 알린다 (로그인 요청 자체는 빼고) */
+export const AUTH_EXPIRED = 'auth:expired'
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(apiUrl(path), init)
+  // 세션은 httpOnly 쿠키라 같은 출처 요청에 저절로 실린다 (Vite proxy). 다른 주소의 백엔드면 credentials가 필요하다
+  const res = await fetch(apiUrl(path), { credentials: 'include', ...init })
   if (!res.ok) {
     const body = await res.json().catch(() => null) as { detail?: string } | null
-    throw new Error(body?.detail ?? `요청 실패 (${res.status})`)
+    if (res.status === 401 && !path.startsWith('/auth/')) window.dispatchEvent(new Event(AUTH_EXPIRED))
+    throw new ApiError(body?.detail ?? `요청 실패 (${res.status})`, res.status)
   }
   return res
+}
+
+/* ------------------------------------------------------------ 회원·권한 */
+/** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide'
+
+export interface Member {
+  id: number
+  email: string
+  name: string
+  role: string
+  role_label: string
+  requested_role: string
+  is_admin: boolean
+  status: 'pending' | 'active' | 'disabled'
+  created_at: string
+  permissions: Permission[]
+}
+
+export async function getMe(): Promise<Member> {
+  return ((await (await request('/auth/me')).json()) as { user: Member }).user
+}
+
+export async function login(email: string, password: string, remember: boolean): Promise<Member> {
+  return ((await (await post('/auth/login', { email, password, remember })).json()) as { user: Member }).user
+}
+
+export async function logout(): Promise<void> {
+  await post('/auth/logout', {})
+}
+
+export async function signup(body: { email: string; name: string; password: string; requested_role?: string }): Promise<{ user: Member; pending: boolean }> {
+  return (await (await post('/auth/signup', body)).json()) as { user: Member; pending: boolean }
+}
+
+export async function getRoles(): Promise<{ id: string; label: string }[]> {
+  return ((await (await request('/auth/roles')).json()) as { roles: { id: string; label: string }[] }).roles
+}
+
+export async function listMembers(): Promise<Member[]> {
+  return ((await (await request('/users')).json()) as { users: Member[] }).users
+}
+
+export async function updateMember(body: { id: number; role?: string; status?: string; is_admin?: boolean }): Promise<Member> {
+  return ((await (await post('/users/update', body)).json()) as { user: Member }).user
+}
+
+export async function createMember(body: { email: string; name: string; password: string; role: string; is_admin?: boolean }): Promise<Member> {
+  return ((await (await post('/users/create', body)).json()) as { user: Member }).user
+}
+
+export async function resetPassword(id: number, password: string): Promise<void> {
+  await post('/users/password', { id, password })
+}
+
+/* ------------------------------------------------------------ 수정 초안 공유·팀장 결정 */
+export interface ServerDraft<T> {
+  state: T | null
+  rev: number
+  updated_at?: string
+  updated_by?: { id: number; name: string; role: string }
+}
+
+export async function getDraft<T>(project: string, version: string): Promise<ServerDraft<T>> {
+  return (await (await request(`/drafts?${query({ project, version })}`)).json()) as ServerDraft<T>
+}
+
+export async function saveDraft<T>(project: string, version: string, state: T, rev: number): Promise<Omit<ServerDraft<T>, 'state'>> {
+  return (await (await post('/drafts', { project, version, state, rev })).json()) as Omit<ServerDraft<T>, 'state'>
+}
+
+export interface Approval {
+  decision: 'approve' | 'changes'
+  target: 'spec' | 'erd' | null
+  comment: string
+  at: string
+  by: { id: number; name: string; role: string }
+}
+
+export async function decideFinal(body: { project: string; version: string; decision: 'approve' | 'changes'; target?: 'spec' | 'erd'; comment: string }): Promise<Approval> {
+  return ((await (await post('/projects/approval', body)).json()) as { approval: Approval }).approval
 }
 
 const query = (params: Record<string, string | number>) =>

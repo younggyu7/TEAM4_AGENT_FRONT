@@ -76,7 +76,7 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
         />
         <div className="flex flex-wrap items-center gap-3">
           {fillable.length > 0 && (
-            <Button size="sm" variant="ghost" icon={<MagicWand />} onClick={fillRecommended}>
+            <Button size="sm" variant="ghost" icon={<MagicWand />} onClick={fillRecommended} disabled={draft.readOnly}>
               남은 질문 {fmt(fillable.length)}개 추천안으로 답하기
             </Button>
           )}
@@ -152,11 +152,13 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
             <span className="sr-only">로 이동해 고치기</span>
           </button>
         )}
-        {item.question && <QuestionAnswer item={item} draft={draft} />}
-        {item.kind === 'remark' && <RemarkDisposition item={item} draft={draft} />}
+        <fieldset disabled={draft.readOnly} className="min-w-0">
+          {item.question && <QuestionAnswer item={item} draft={draft} />}
+          {item.kind === 'remark' && <RemarkDisposition item={item} draft={draft} />}
+        </fieldset>
       </div>
 
-      <div className="sm:pt-6">
+      <fieldset disabled={draft.readOnly} className="sm:pt-6">
         {item.kind === 'remark' ? null : item.auto ? (
           <span className="inline-flex items-center gap-1.5 text-small text-fg-3"><Wrench size={14} aria-hidden="true" />고치면 저절로 해결</span>
         ) : !item.question && (
@@ -167,7 +169,7 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
             describedBy={item.detail ? detailId : undefined}
           />
         )}
-      </div>
+      </fieldset>
     </li>
   )
 }

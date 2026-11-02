@@ -1,18 +1,25 @@
-import { Eye, EyeSlash, SignIn, TreeStructure } from '@phosphor-icons/react'
-import { useId, useRef, useState, type FormEvent } from 'react'
+import { Eye, EyeSlash, SignIn, TreeStructure, UserPlus } from '@phosphor-icons/react'
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { getRoles, signup } from '../../api'
 import { SchemaArt } from '../components/PageHeader'
 import { Button, Checkbox, Label, TextInput } from '../components/ui'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const SELECT = 'min-h-11 w-full rounded-md border border-control bg-card px-3 text-body text-fg focus-visible:border-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15'
 
-/** 로그인. 왼쪽은 Runway식 검은 구획(큰 제목 + 장식), 오른쪽은 입력. 좁은 화면에서는 위아래로 쌓인다. */
-export function Login({ onSignIn }: { onSignIn: (email: string, remember: boolean) => void }) {
+/** 로그인·회원가입. 왼쪽은 Runway식 검은 구획(큰 제목 + 장식), 오른쪽은 입력. 좁은 화면에서는 위아래로 쌓인다.
+ * 가입하면 '승인 대기'가 되고, 관리자가 역할(기획·데이터 파트원·파트장, 팀장)을 정해 승인하면 로그인된다.
+ * 처음 가입한 사람은 관리자·팀장이 된다. */
+export function Login({ onSignIn }: { onSignIn: (email: string, password: string, remember: boolean) => Promise<void> }) {
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
   const [show, setShow] = useState(false)
   const [touched, setTouched] = useState({ email: false, password: false })
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   const ids = { email: useId(), password: useId(), emailErr: useId(), passwordErr: useId() }
@@ -22,14 +29,20 @@ export function Login({ onSignIn }: { onSignIn: (email: string, remember: boolea
   const showEmailError = touched.email && emailError
   const showPasswordError = touched.password && passwordError
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault()
     setTouched({ email: true, password: true })
     // 틀린 칸이 있으면 첫 번째로 포커스를 옮긴다
     if (emailError) return emailRef.current?.focus()
     if (passwordError) return passwordRef.current?.focus()
     setSubmitting(true)
-    window.setTimeout(() => onSignIn(email.trim(), remember), 250)
+    setError('')
+    try {
+      await onSignIn(email.trim(), password, remember)
+    } catch (err) {
+      setError((err as Error).message)
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -68,8 +81,20 @@ export function Login({ onSignIn }: { onSignIn: (email: string, remember: boolea
       {/* 입력 */}
       <main className="flex items-center justify-center px-6 py-12 sm:px-10">
         <div className="w-full max-w-sm">
+          {mode === 'signup' ? (
+            <SignupForm
+              onCancel={() => { setMode('login'); setError('') }}
+              onDone={(mail, pending) => {
+                setMode('login')
+                setEmail(mail)
+                setPassword('')
+                setNotice(pending ? '가입했습니다. 관리자가 역할을 정해 승인하면 로그인할 수 있습니다.' : '가입했습니다. 첫 가입자라 관리자·팀장입니다. 로그인하세요.')
+              }}
+            />
+          ) : (<>
           <h2 className="text-title font-medium">로그인</h2>
           <p className="mt-2 text-label text-fg-3">설계 검토 계정으로 들어갑니다.</p>
+          {notice && <p role="status" className="mt-4 rounded-md bg-ok-soft px-3 py-2 text-small text-ok">{notice}</p>}
 
           <form noValidate onSubmit={submit} className="mt-8 space-y-5">
             <div>
@@ -124,16 +149,91 @@ export function Login({ onSignIn }: { onSignIn: (email: string, remember: boolea
 
             <Checkbox checked={remember} onChange={setRemember} label="이 브라우저에서 로그인 유지" />
 
+            {error && <p role="alert" className="text-small text-danger">{error}</p>}
             <Button type="submit" variant="primary" className="w-full !min-h-11" icon={<SignIn />} disabled={submitting}>
               {submitting ? '들어가는 중…' : '로그인'}
             </Button>
           </form>
 
-          <p className="mt-8 rounded-md border border-line bg-card px-3 py-2.5 text-small text-fg-3">
-            개발용 로그인입니다. 백엔드 인증을 붙이기 전이라 어떤 이메일로도 들어가며, 비밀번호는 저장하지 않습니다.
-          </p>
+          <div className="mt-8 flex items-center justify-between gap-3 border-t border-line pt-5 text-small text-fg-3">
+            <span>계정이 없나요?</span>
+            <Button size="sm" icon={<UserPlus />} onClick={() => { setMode('signup'); setError(''); setNotice('') }}>회원가입</Button>
+          </div>
+          </>)}
         </div>
       </main>
     </div>
+  )
+}
+
+/** 회원가입: 이름·이메일·비밀번호와 희망 역할 (관리자가 승인할 때 참고, 바로 권한을 주지 않음) */
+function SignupForm({ onCancel, onDone }: { onCancel: () => void; onDone: (email: string, pending: boolean) => void }) {
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', role: '' })
+  const [roles, setRoles] = useState<{ id: string; label: string }[]>([])
+  const [error, setError] = useState('')
+  const [sending, setSending] = useState(false)
+  const id = useId()
+  useEffect(() => { getRoles().then(setRoles).catch(() => setRoles([])) }, [])
+  const set = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const problem = !form.name.trim() ? '이름을 입력하세요.'
+    : !EMAIL.test(form.email.trim()) ? '이메일 형식이 아닙니다.'
+    : form.password.length < 8 ? '비밀번호는 8자 이상이어야 합니다.'
+    : form.password !== form.confirm ? '비밀번호 확인이 맞지 않습니다.' : ''
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (problem) return setError(problem)
+    setSending(true)
+    setError('')
+    try {
+      const r = await signup({ email: form.email.trim(), name: form.name.trim(), password: form.password, requested_role: form.role })
+      onDone(form.email.trim(), r.pending)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <>
+      <h2 className="text-title font-medium">회원가입</h2>
+      <p className="mt-2 text-label text-fg-3">가입하면 관리자가 역할을 정해 승인한 뒤 쓸 수 있습니다.</p>
+      <form noValidate onSubmit={submit} className="mt-8 space-y-4">
+        <div>
+          <Label htmlFor={`${id}-name`}>이름</Label>
+          <TextInput id={`${id}-name`} autoComplete="name" value={form.name} onChange={set('name')} />
+        </div>
+        <div>
+          <Label htmlFor={`${id}-email`}>이메일</Label>
+          <TextInput id={`${id}-email`} type="email" autoComplete="username" autoCapitalize="none" spellCheck={false}
+            value={form.email} onChange={set('email')} placeholder="name@company.com" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor={`${id}-pw`} hint="8자 이상">비밀번호</Label>
+            <TextInput id={`${id}-pw`} type="password" autoComplete="new-password" value={form.password} onChange={set('password')} />
+          </div>
+          <div>
+            <Label htmlFor={`${id}-pw2`}>비밀번호 확인</Label>
+            <TextInput id={`${id}-pw2`} type="password" autoComplete="new-password" value={form.confirm} onChange={set('confirm')} />
+          </div>
+        </div>
+        <div>
+          <Label htmlFor={`${id}-role`} hint="관리자 참고용">희망 역할</Label>
+          <select id={`${id}-role`} className={SELECT} value={form.role} onChange={set('role')}>
+            <option value="">선택 안 함</option>
+            {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+        </div>
+        {error && <p role="alert" className="text-small text-danger">{error}</p>}
+        <div className="flex gap-2">
+          <Button onClick={onCancel} className="!min-h-11">로그인으로</Button>
+          <Button type="submit" variant="primary" className="!min-h-11 flex-1" icon={<UserPlus />} disabled={sending}>
+            {sending ? '가입하는 중…' : '가입하기'}
+          </Button>
+        </div>
+      </form>
+    </>
   )
 }

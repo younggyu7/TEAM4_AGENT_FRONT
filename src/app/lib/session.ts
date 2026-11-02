@@ -1,30 +1,43 @@
-import { useCallback, useState } from 'react'
-import { readStore, removeStore, writeStore } from './storage'
+import { useCallback, useEffect, useState } from 'react'
+import { AUTH_EXPIRED, getMe, login, logout, type Member, type Permission } from '../../api'
+import { removeStore } from './storage'
 
-// 백엔드 인증이 붙기 전의 개발용 로그인. 비밀번호는 저장하지 않고, 이 브라우저에 사용자 표시 정보만 남긴다.
-// FastAPI 인증이 생기면 signIn을 POST /api/auth/login 호출로 바꾸고 토큰은 httpOnly 쿠키로 받는다.
+// 로그인 세션: 백엔드(POST /auth/login)가 httpOnly 쿠키로 준다. 화면은 GET /auth/me로 누구인지·무엇을 할 수 있는지만 안다.
+// 권한 검사는 서버가 다시 하므로, 화면의 can()은 버튼을 끄고 이유를 보여 주는 용도다.
 
-export interface User {
-  name: string
-  email: string
-  role: string
+export type User = Member
+
+/** 이 회원이 그 일을 할 수 있는지 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
+export const can = (user: User | null | undefined, permission: Permission) => Boolean(user?.permissions.includes(permission))
+
+/** 권한이 없을 때 버튼에 보여 줄 이유 */
+export const NEEDS: Record<Permission, string> = {
+  upload: '새 문서 업로드는 기획 파트원·기획 파트장·팀장만 할 수 있습니다',
+  spec_edit: '기능 명세 수정은 기획 파트원·기획 파트장·팀장만 할 수 있습니다',
+  spec_confirm: '기능 명세 확정(내보내기)은 기획 파트장·팀장만 할 수 있습니다',
+  erd_edit: 'ERD 수정은 데이터 파트원·데이터 파트장·팀장만 할 수 있습니다',
+  erd_confirm: 'ERD 최종 확정은 데이터 파트장·팀장만 할 수 있습니다',
+  final_decide: '최종 승인·수정 지시와 기술 스택은 팀장만 정할 수 있습니다',
 }
 
-const KEY = 'session'
-
 export function useSession() {
-  const [user, setUser] = useState<User | null>(() => readStore<User>(KEY))
+  // undefined: 확인 중 · null: 로그인 안 함
+  const [user, setUser] = useState<User | null | undefined>(undefined)
 
-  const signIn = useCallback((email: string, remember: boolean) => {
-    const local = email.split('@')[0] ?? email
-    const next: User = { name: local, email, role: '설계 검토 담당' }
-    if (remember) writeStore(KEY, next)
-    setUser(next)
+  useEffect(() => {
+    removeStore('session')   // 예전 개발용 로그인이 남긴 표시 정보
+    getMe().then(setUser).catch(() => setUser(null))
+    const expired = () => setUser(null)
+    window.addEventListener(AUTH_EXPIRED, expired)
+    return () => window.removeEventListener(AUTH_EXPIRED, expired)
+  }, [])
+
+  const signIn = useCallback(async (email: string, password: string, remember: boolean) => {
+    setUser(await login(email, password, remember))
   }, [])
 
   const signOut = useCallback(() => {
-    removeStore(KEY)
-    setUser(null)
+    logout().catch(() => undefined).finally(() => setUser(null))
   }, [])
 
   return { user, signIn, signOut }

@@ -160,7 +160,10 @@ function FunctionRow({ fn, expanded, openCount, edited, onToggle, draft }: {
       </button>
       {expanded && (
         <div id={bodyId} className="border-t border-line px-3 py-4 sm:px-4">
-          <FunctionForm fn={fn} draft={draft} edited={edited} />
+          {/* 고칠 권한이 없으면 입력칸을 모두 끈다 (보기 전용) */}
+          <fieldset disabled={draft.readOnly} className="min-w-0">
+            <FunctionForm fn={fn} draft={draft} edited={edited} />
+          </fieldset>
         </div>
       )}
     </li>

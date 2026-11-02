@@ -106,6 +106,7 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
             </ul>
           </nav>
           {selected && (
+            <fieldset disabled={draft.readOnly} className="min-w-0">
             <EntityForm
               key={selected.entity_id}
               entity={selected}
@@ -115,6 +116,7 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
               onOpenEntity={onFocus}
               onOpenFunction={onOpenFunction}
             />
+            </fieldset>
           )}
         </div>
       )}

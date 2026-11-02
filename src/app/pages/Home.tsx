@@ -10,6 +10,7 @@ import { JobPanel } from '../components/JobPanel'
 import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Label, Loading, TextInput, type Tone } from '../components/ui'
 import { draftSummaries } from '../lib/draft'
 import { startUpload, useJob } from '../lib/jobs'
+import { can, NEEDS } from '../lib/session'
 
 export function Home({ shell }: { shell: ShellBase }) {
   const { user, projects, navigate, onReloadProjects: onReload } = shell
@@ -111,7 +112,7 @@ export function Home({ shell }: { shell: ShellBase }) {
             </div>
           </Card>
 
-          <NewRunCard onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
+          <NewRunCard canUpload={can(user, 'upload')} onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
         </div>
     </Shell>
   )
@@ -123,7 +124,7 @@ const SELECT = cx('min-h-11 w-full rounded-md border border-control bg-card px-3
 const EFFORT_LABEL: Record<string, string> = { low: '낮음 (빠르고 저렴)', medium: '보통', high: '높음 (정확, 토큰 많이)' }
 
 /** 원본 요구서 올리기 → 백엔드가 전체 실행(확인 질문은 추천안으로 가정) → 끝나면 기능 명세 첫 버전을 연다 */
-function NewRunCard({ onFinished, onOpen }: { onFinished: () => void; onOpen: (project: string, version: string) => void }) {
+function NewRunCard({ onFinished, onOpen, canUpload }: { onFinished: () => void; onOpen: (project: string, version: string) => void; canUpload: boolean }) {
   const [file, setFile] = useState<File | null>(null)
   const [project, setProject] = useState('')
   const [title, setTitle] = useState('')
@@ -225,7 +226,8 @@ function NewRunCard({ onFinished, onOpen }: { onFinished: () => void; onOpen: (p
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-small text-fg-3">만든 DDL은 ERD를 만들 때마다 검증용 DB에 적용해 봅니다 (실패하면 자동으로 고침).</p>
-          <Button variant="primary" icon={<UploadSimple />} disabled={!file || running} onClick={submit}>
+          <Button variant="primary" icon={<UploadSimple />} disabled={!file || running || !canUpload} onClick={submit}
+            title={canUpload ? undefined : NEEDS.upload}>
             {submitting ? '올리는 중' : job?.status === 'running' ? '분석 중' : '올리고 분석 시작'}
           </Button>
         </div>

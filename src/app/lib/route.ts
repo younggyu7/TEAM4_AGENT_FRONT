@@ -33,12 +33,14 @@ const isPage = (p: string | undefined): p is Page => p !== undefined && p in PAG
 export type Route =
   | { name: 'login' }
   | { name: 'home' }
+  | { name: 'members' }
   | { name: 'workspace'; project: string; version: string; page: Page; focus?: string }
 
-// 주소: #/login, #/home, #/p/<프로젝트>/<버전>/<화면>/<항목 ID> — 공유하거나 새로고침해도 같은 화면
+// 주소: #/login, #/home, #/members(회원 관리), #/p/<프로젝트>/<버전>/<화면>/<항목 ID> — 공유하거나 새로고침해도 같은 화면
 export function parseHash(hash = window.location.hash): Route {
   const [head, ...rest] = hash.replace(/^#\/?/, '').split('/').map(decodeURIComponent)
   if (head === 'login') return { name: 'login' }
+  if (head === 'members') return { name: 'members' }
   if (head === 'p') {
     const [project, version, page, focus] = rest
     if (project && /^\d+(\.\d+)*$/.test(version ?? '')) {
@@ -57,6 +59,7 @@ export function parseHash(hash = window.location.hash): Route {
 export function toHash(r: Route): string {
   if (r.name === 'login') return '#/login'
   if (r.name === 'home') return '#/home'
+  if (r.name === 'members') return '#/members'
   const parts = ['p', r.project, r.version, r.page, r.focus ?? ''].map(encodeURIComponent)
   return '#/' + parts.join('/').replace(/\/+$/, '')
 }

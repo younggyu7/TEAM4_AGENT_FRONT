@@ -164,6 +164,11 @@ export interface VersionRecord {
   summary?: string[]
   db_validation?: string
   db_engine?: string
+  /** 화면 요청으로 만든 사람 */
+  created_by?: { id: number; name: string; role: string }
+  /** 최종본: 팀장의 마지막 결정(승인·수정 지시)과 그 기록 */
+  approval?: import('./api').Approval
+  approvals?: import('./api').Approval[]
   db_errors?: string[]
 }
 

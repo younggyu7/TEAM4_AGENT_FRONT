@@ -1,9 +1,9 @@
-import { Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useState } from 'react'
-import { getTechStacks, setTechStack, type Job } from '../../api'
+import { decideFinal, getTechStacks, setTechStack, type Job } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
-import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Loading, TextInput } from '../components/ui'
+import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
 import { ZipButton } from '../components/ZipButton'
 import { ARTIFACT_FILES, DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
 import { refreshVersion, useFile } from '../lib/data'
@@ -11,7 +11,7 @@ import { relationsOf } from '../lib/erd'
 import { FullErd } from './Erd'
 
 // 최종 산출물: 최종본(v<ERD>.1)에 저장된 결과를 보여주기만 한다 (고치는 단계가 아님 — 바꾸려면 ERD 화면에서 새 버전)
-export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review }: {
+export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, onDecided }: {
   design: Design
   project: string
   version: string
@@ -22,6 +22,10 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
   onOpenDevSpec: (name: string) => void
   /** 진행 중인 ERD 최종 확정 작업 */
   review?: Job
+  /** 팀장: 최종 승인·수정 지시·기술 스택을 정할 수 있다 */
+  canDecide: boolean
+  /** 승인·수정 지시를 남긴 뒤 버전 기록을 다시 읽는다 */
+  onDecided: () => void
 }) {
   // 최종본은 확정한 ERD 아래 번호(v2.1 → v2.1.1). 아직 없으면 ERD 버전을 미리 보기로 보여준다
   const isFinal = record?.stage === 'final' || version.split('.').length === 3
@@ -63,6 +67,8 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         </div>
       </Card>
 
+      {isFinal && record && <DecisionCard project={project} version={version} record={record} canDecide={canDecide} onDecided={onDecided} />}
+
       <RemarksCard remarks={remarks} isFinal={isFinal} onOpen={onOpenEntity} entities={new Set(entities.map((e) => e.entity_id))} />
 
       <FinalErdCard design={design} version={version} onOpenEntity={onOpenEntity} />
@@ -76,8 +82,93 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         <FileList project={project} version={version} files={ARTIFACT_FILES} />
       </Card>
 
-      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} />
+      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canDecide={canDecide} />
     </div>
+  )
+}
+
+/**
+ * 팀장 결정: 최종본을 승인하거나, 지시 내용과 함께 기능 명세·ERD 단계로 돌려보낸다 (POST /projects/approval).
+ * 돌려보낸 지시는 그 단계 화면 위에 보이고, 담당 파트가 고쳐 새 버전 → 다시 최종 확정한다. 기록은 버전 기록에 쌓인다.
+ */
+function DecisionCard({ project, version, record, canDecide, onDecided }: {
+  project: string; version: string; record: VersionRecord; canDecide: boolean; onDecided: () => void
+}) {
+  const [mode, setMode] = useState<'idle' | 'changes'>('idle')
+  const [target, setTarget] = useState<'spec' | 'erd'>('erd')
+  const [comment, setComment] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const ids = { comment: useId() }
+  const last = record.approval
+  const send = async (decision: 'approve' | 'changes') => {
+    setSending(true)
+    setError('')
+    try {
+      await decideFinal({ project, version, decision, target: decision === 'changes' ? target : undefined, comment })
+      setMode('idle')
+      setComment('')
+      refreshVersion(project, version)
+      onDecided()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSending(false)
+    }
+  }
+  return (
+    <Card aria-labelledby="final-decision">
+      <CardHeader eyebrow="Decision" title="팀장 결정" titleId="final-decision"
+        actions={last ? <Badge tone={last.decision === 'approve' ? 'ok' : 'warn'}>{last.decision === 'approve' ? '최종 승인됨' : `수정 지시 → ${last.target === 'spec' ? '기능 명세' : 'ERD'}`}</Badge>
+          : <Badge tone="neutral">결정 전</Badge>}>
+        <p className="mt-1 text-small text-fg-3">
+          {last ? `${last.by.name} · ${formatDate(last.at)}${last.comment ? ` — ${last.comment}` : ''}`
+            : '팀장이 이 최종본을 승인하거나, 고칠 내용을 적어 기능 명세·ERD 단계로 돌려보냅니다.'}
+        </p>
+      </CardHeader>
+      <div className="space-y-3 px-5 pb-5">
+        {!canDecide && <p className="text-small text-fg-3">최종 승인·수정 지시는 팀장만 할 수 있습니다.</p>}
+        {canDecide && mode === 'idle' && (
+          <div className="flex flex-wrap gap-2">
+            <Button variant="ok" icon={<SealCheck />} disabled={sending} onClick={() => void send('approve')}>최종 승인</Button>
+            <Button icon={<ArrowBendUpLeft />} disabled={sending} onClick={() => setMode('changes')}>수정 지시</Button>
+          </div>
+        )}
+        {canDecide && mode === 'changes' && (
+          <div className="space-y-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-3">
+            <div role="radiogroup" aria-label="돌려보낼 단계" className="flex flex-wrap gap-3 text-label">
+              {(['spec', 'erd'] as const).map((t) => (
+                <label key={t} className="flex cursor-pointer items-center gap-1.5">
+                  <input type="radio" name="target" checked={target === t} onChange={() => setTarget(t)} />
+                  {t === 'spec' ? '기능 명세 (기획 파트)' : 'ERD (데이터 파트)'}
+                </label>
+              ))}
+            </div>
+            <Label htmlFor={ids.comment}>지시 내용</Label>
+            <TextArea id={ids.comment} value={comment} maxLength={2000} placeholder="예: 결재선 단계를 3단계까지 받도록 기능과 테이블을 고칠 것"
+              onChange={(e) => setComment(e.target.value)} />
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setMode('idle')}>취소</Button>
+              <Button size="sm" variant="primary" disabled={sending || !comment.trim()} onClick={() => void send('changes')}>돌려보내기</Button>
+            </div>
+          </div>
+        )}
+        {error && <p role="alert" className="text-small text-danger">{error}</p>}
+        {(record.approvals?.length ?? 0) > 1 && (
+          <details className="text-small">
+            <summary className="cursor-pointer text-fg-3">결정 기록 {record.approvals!.length}건</summary>
+            <ol className="mt-2 space-y-1">
+              {[...record.approvals!].reverse().map((a, i) => (
+                <li key={i} className="text-fg-2">
+                  {formatDate(a.at)} · {a.by.name} · {a.decision === 'approve' ? '승인' : `수정 지시 → ${a.target === 'spec' ? '기능 명세' : 'ERD'}`}
+                  {a.comment && <span className="text-fg-3"> — {a.comment}</span>}
+                </li>
+              ))}
+            </ol>
+          </details>
+        )}
+      </div>
+    </Card>
   )
 }
 
@@ -212,11 +303,12 @@ function DdlCard({ project, version }: { project: string; version: string }) {
 }
 
 /** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 9개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
-function DevSpecFilesCard({ design, project, version, onOpen }: {
+function DevSpecFilesCard({ design, project, version, onOpen, canDecide }: {
   design: Design
   project: string
   version: string
   onOpen: (name: string) => void
+  canDecide: boolean
 }) {
   const meta = design.meta.dev_spec
   return (
@@ -229,7 +321,7 @@ function DevSpecFilesCard({ design, project, version, onOpen }: {
         </p>
       </CardHeader>
       {/* 최종 산출물 화면에서 유일하게 고칠 수 있는 것: 개발에 쓸 기술 스택 (LLM 없이 개발 스펙 9개를 다시 쓴다) */}
-      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} />}
+      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} canDecide={canDecide} />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
           {DEV_SPEC_FILES.map((d, i) => (
@@ -259,7 +351,7 @@ function DevSpecFilesCard({ design, project, version, onOpen }: {
  * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고
  * design.json(TQ-001 답)·버전 기록(tech_stack)에 남긴다. 원문이 정한 스택은 바꾸지 않는다.
  */
-function StackPicker({ project, version, stack, basis }: { project: string; version: string; stack: string; basis: string }) {
+function StackPicker({ project, version, stack, basis, canDecide }: { project: string; version: string; stack: string; basis: string; canDecide: boolean }) {
   const ids = { group: useId(), custom: useId() }
   const [choices, setChoices] = useState<{ stack: string; note: string }[] | null>(null)
   const [editing, setEditing] = useState(basis !== '확정')
@@ -272,6 +364,9 @@ function StackPicker({ project, version, stack, basis }: { project: string; vers
   // 직접 적어 확정한 스택은 '직접 입력' 칸에 채워 둔다
   useEffect(() => { if (choices && !choices.some((c) => c.stack === stack)) setCustom(stack) }, [choices, stack])
 
+  if (!canDecide) {   // 기술 스택은 팀장이 정한다
+    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> ({basis === '원문' ? '원문에 정해짐' : basis === '가정' ? '추천안으로 가정 — 팀장이 정합니다' : '확정'})</p>
+  }
   if (basis === '원문') {
     return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> (원문에 정해짐)</p>
   }

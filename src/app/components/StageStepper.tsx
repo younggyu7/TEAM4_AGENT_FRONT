@@ -20,11 +20,13 @@ function versionLabel(stage: StagePage, t: Record<StagePage, string>): string {
 
 /** 이 버전의 진행 단계. 앞 단계를 확정해야 다음 단계가 '진행 가능'으로 바뀌지만, 보기는 언제든 할 수 있다.
  * 맨 끝 '산출물 보기'는 단계가 아니라 지금 버전의 산출물(판단 기록·이슈·추적 …)을 읽기만 하는 화면이다. */
-export function StageStepper({ page, version, targets, finalized, onGo }: {
+export function StageStepper({ page, version, targets, finalized, decision, onGo }: {
   page: Page
   version: string                      // 산출물 보기가 여는 버전 (지금 보는 버전)
   targets: Record<StagePage, string>   // 각 단계에서 열 버전 (v2 / v2.1 / v2.1.1)
   finalized: { spec?: string; erd?: string; final?: string }
+  /** 최종본에 대한 팀장의 마지막 결정 */
+  decision?: { decision: 'approve' | 'changes'; at: string }
   onGo: (page: Page) => void
 }) {
   const done = (id: StagePage) => Boolean(finalized[id])
@@ -35,7 +37,9 @@ export function StageStepper({ page, version, targets, finalized, onGo }: {
         {STEPS.map((s, i) => {
           const current = s.id === page
           const isDone = done(s.id)
-          const status = isDone
+          const status = s.id === 'final' && isDone && decision
+            ? `${decision.decision === 'approve' ? '팀장 승인' : '수정 지시'} ${formatDate(decision.at)}`
+            : isDone
             ? `${s.id === 'final' ? '최종 확정' : '확정'} ${formatDate(finalized[s.id])}`
             : s.id === 'final'
               ? (ready(i) ? '최종 확정 전' : '앞 단계 확정 전 (미리 보기)')
