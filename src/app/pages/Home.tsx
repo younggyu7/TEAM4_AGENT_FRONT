@@ -1,12 +1,13 @@
 import { ArrowRight, FileText, TreeStructure, UploadSimple } from '@phosphor-icons/react'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
+import { getLlmOptions, type LlmOptions } from '../../api'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
 import { HomeInsights } from '../components/Insights'
 import { PageHeader, SchemaArt } from '../components/PageHeader'
 import { Shell, type ShellBase } from '../components/Shell'
 import { JobPanel } from '../components/JobPanel'
-import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextInput, type Tone } from '../components/ui'
+import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Label, Loading, TextInput, type Tone } from '../components/ui'
 import { draftSummaries } from '../lib/draft'
 import { startUpload, useJob } from '../lib/jobs'
 
@@ -117,13 +118,27 @@ export function Home({ shell }: { shell: ShellBase }) {
 }
 
 const ACCEPT = '.pdf,.docx,.hwpx,.txt,.md'
+const SELECT = cx('min-h-11 w-full rounded-md border border-control bg-card px-3 text-body text-fg',
+  'hover:border-fg-3 focus-visible:border-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15 disabled:opacity-45')
+const EFFORT_LABEL: Record<string, string> = { low: '낮음 (빠르고 저렴)', medium: '보통', high: '높음 (정확, 토큰 많이)' }
 
 /** 원본 요구서 올리기 → 백엔드가 전체 실행(확인 질문은 추천안으로 가정) → 끝나면 기능 명세 첫 버전을 연다 */
 function NewRunCard({ onFinished, onOpen }: { onFinished: () => void; onOpen: (project: string, version: string) => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [project, setProject] = useState('')
   const [title, setTitle] = useState('')
-  const [validateDb, setValidateDb] = useState(true)
+  // 이 프로젝트 전체(기능 명세 → ERD → 최종 확정)에 쓸 모델·생각 수준. 기본은 백엔드 .env 값
+  const [llm, setLlm] = useState<LlmOptions | null>(null)
+  const [model, setModel] = useState('')
+  const [effort, setEffort] = useState('')
+  useEffect(() => {
+    getLlmOptions().then((o) => {
+      setLlm(o)
+      setModel(o.models.some((m) => m.id === o.default_model) ? o.default_model : o.models[0]?.id ?? '')
+      setEffort(o.default_effort)
+    }).catch(() => setLlm(null))
+  }, [])
+  const picked = llm?.models.find((m) => m.id === model)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -142,7 +157,7 @@ function NewRunCard({ onFinished, onOpen }: { onFinished: () => void; onOpen: (p
     setSubmitting(true)
     setError('')
     try {
-      const started = await startUpload(file, { project, title, validateDb }, (done) => {
+      const started = await startUpload(file, { project, title, model, effort: picked?.effort === false ? '' : effort }, (done) => {
         if (done.status === 'done') onFinished()
       })
       setJobProject(started.project)
@@ -188,8 +203,28 @@ function NewRunCard({ onFinished, onOpen }: { onFinished: () => void; onOpen: (p
               onChange={(e) => setTitle(e.target.value)} />
           </div>
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor={`${inputId}-model`} hint="이 프로젝트 전체에 사용">모델</Label>
+            <select id={`${inputId}-model`} className={SELECT} value={model} disabled={running || !llm?.models.length}
+              onChange={(e) => setModel(e.target.value)}>
+              {!llm && <option value="">백엔드 설정(.env) 그대로</option>}
+              {llm?.models.map((m) => <option key={m.id} value={m.id}>{m.label}{m.id === llm.default_model ? ' (기본)' : ''}</option>)}
+            </select>
+            {picked && <p className="mt-1 text-micro text-fg-3">{picked.note}</p>}
+          </div>
+          <div>
+            <Label htmlFor={`${inputId}-effort`} hint="높을수록 정확하지만 토큰 많이">생각 수준 (effort)</Label>
+            <select id={`${inputId}-effort`} className={SELECT} value={picked?.effort === false ? '' : effort}
+              disabled={running || !llm || picked?.effort === false} onChange={(e) => setEffort(e.target.value)}>
+              {picked?.effort === false && <option value="">이 모델은 생각 수준 없음</option>}
+              {(llm?.efforts ?? []).map((x) => <option key={x} value={x}>{EFFORT_LABEL[x] ?? x}</option>)}
+            </select>
+            <p className="mt-1 text-micro text-fg-3">요구사항 검토 등 단계별로 따로 정한 값(.env의 *_EFFORT)은 그대로 씁니다.</p>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Checkbox checked={validateDb} onChange={setValidateDb} disabled={running} label="만든 DDL을 검증용 DB에 적용해 보기" />
+          <p className="text-small text-fg-3">만든 DDL은 ERD를 만들 때마다 검증용 DB에 적용해 봅니다 (실패하면 자동으로 고침).</p>
           <Button variant="primary" icon={<UploadSimple />} disabled={!file || running} onClick={submit}>
             {submitting ? '올리는 중' : job?.status === 'running' ? '분석 중' : '올리고 분석 시작'}
           </Button>

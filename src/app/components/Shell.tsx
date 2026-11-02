@@ -157,10 +157,12 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
           <span aria-hidden="true" className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-sunken text-label font-semibold">
             {initials(user.name)}
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-label font-semibold">{user.name}</p>
             <p className="truncate text-small text-fg-3">{user.role}</p>
           </div>
+          <IconButton label="로그아웃" icon={<SignOut />} onClick={onSignOut}
+            className="size-8 hover:bg-danger-soft hover:text-danger [&>svg]:size-[18px]" />
         </div>
         <p className="mt-2 truncate text-small text-fg-3" title={user.email}>{user.email}</p>
       </section>
@@ -233,16 +235,6 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
         )}
       </section>
 
-      <div className="mt-auto border-t border-line pt-3">
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-label text-fg-3 transition-colors duration-150 hover:bg-danger-soft hover:text-danger"
-        >
-          <SignOut size={18} aria-hidden="true" />
-          로그아웃
-        </button>
-      </div>
     </div>
   )
 }

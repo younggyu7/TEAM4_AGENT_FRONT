@@ -138,13 +138,27 @@ export interface SemanticReview {
   usage: { calls?: number; input_tokens?: number; output_tokens?: number }
 }
 
-/** 원본 요구서를 올려 기능 명세 초안까지 실행한다 (확인 질문은 추천안으로 가정). 몇 분 걸리므로 작업 ID를 받고 getJob으로 확인한다. */
-export async function startRun(file: File, opts: { project?: string; title?: string; validateDb?: boolean }): Promise<Job> {
+/** 업로드에서 고를 LLM 모델·생각 수준 (키가 있는 공급자만). effort: 그 모델이 생각 수준을 받는지 */
+export interface LlmOptions {
+  models: { id: string; label: string; note: string; provider: 'anthropic' | 'openai'; effort: boolean }[]
+  efforts: string[]
+  default_model: string
+  default_effort: string
+}
+
+export async function getLlmOptions(): Promise<LlmOptions> {
+  return (await (await request('/llm-options')).json()) as LlmOptions
+}
+
+/** 원본 요구서를 올려 기능 명세 초안까지 실행한다 (확인 질문은 추천안으로 가정). 몇 분 걸리므로 작업 ID를 받고 getJob으로 확인한다.
+ * model·effort는 이 프로젝트의 ERD 만들기·최종 확정까지 같이 쓴다 (비우면 백엔드 .env). DDL 검증은 항상 한다. */
+export async function startRun(file: File, opts: { project?: string; title?: string; model?: string; effort?: string }): Promise<Job> {
   const form = new FormData()
   form.append('file', file)
   if (opts.project?.trim()) form.append('project', opts.project.trim())
   if (opts.title?.trim()) form.append('title', opts.title.trim())
-  form.append('validate_db', String(Boolean(opts.validateDb)))
+  if (opts.model) form.append('model', opts.model)
+  if (opts.effort) form.append('effort', opts.effort)
   return ((await (await request('/runs', { method: 'POST', body: form })).json()) as { job: Job }).job
 }
 
