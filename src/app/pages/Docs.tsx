@@ -464,7 +464,8 @@ function Ddl({ project, version }: { project: string; version: string }) {
 
 /* ------------------------------------------------------------ 추적 */
 type Column = 'req' | 'func' | 'entity'
-interface TNode { column: Column; id: string; name: string; gap?: string }
+// gap: 연결 누락(빨강) · lack: 의미 검토가 지적한 데이터 누락(주황) · note: 문제 아님(회색)
+interface TNode { column: Column; id: string; name: string; gap?: string; lack?: string; note?: string }
 
 /** 선택한 항목과 이어진 요구사항·기능·테이블 (기능을 거쳐 양쪽으로 따라간다) */
 function connected(sel: TNode, links: Links, includeNfr: boolean): Set<string> {
@@ -487,21 +488,38 @@ function Trace({ ctx }: { ctx: Ctx }) {
   const [gapsOnly, setGapsOnly] = useState(false)
   const [selected, setSelected] = useState<TNode | null>(null)
 
-  const columns = useMemo<Record<Column, TNode[]>>(() => ({
-    req: design.requirements.filter((r) => r.scope === 'SYSTEM' && (includeNfr || r.type === 'FUNCTIONAL')).map((r) => ({
-      column: 'req', id: r.requirement_id, name: r.title,
-      gap: r.type === 'FUNCTIONAL' && !links.funcsOfReq.get(r.requirement_id)?.length ? '기능 없음' : undefined,
-    })),
-    func: design.functions.map((f) => ({ column: 'func', id: f.function_id, name: f.name, gap: !links.entitiesOfFunc.get(f.function_id)?.length ? '테이블 없음' : undefined })),
-    entity: design.data_model.entities.map((e) => ({ column: 'entity', id: e.entity_id, name: e.label, gap: !links.funcsOfEntity.get(e.entity_id)?.length ? '쓰는 기능 없음' : undefined })),
-  }), [design, links, includeNfr])
+  const columns = useMemo<Record<Column, TNode[]>>(() => {
+    // 최종 확정의 의미 검토가 '데이터 누락'(테이블은 이어졌지만 필요한 컬럼·테이블이 빠짐)으로 지적한 기능
+    const lacking = new Set(design.issues
+      .filter((i) => i.kind === 'SEM_MODEL_GAP' && i.status !== 'RESOLVED')
+      .flatMap((i) => i.target_id.split(/,\s*/)))
+    return {
+      req: design.requirements.filter((r) => r.scope === 'SYSTEM' && (includeNfr || r.type === 'FUNCTIONAL')).map((r) => ({
+        column: 'req', id: r.requirement_id, name: r.title,
+        gap: r.type === 'FUNCTIONAL' && !links.funcsOfReq.get(r.requirement_id)?.length ? '기능 없음' : undefined,
+      })),
+      func: design.functions.map((f) => {
+        const linked = !!links.entitiesOfFunc.get(f.function_id)?.length
+        // 다루는 데이터가 없는 기능(내보내기·화면 지원 등)은 테이블이 없어도 정상
+        return {
+          column: 'func', id: f.function_id, name: f.name,
+          gap: !linked && f.data_objects.length ? '테이블 없음' : undefined,
+          note: !linked && !f.data_objects.length ? '저장 데이터 없음' : undefined,
+          lack: lacking.has(f.function_id) ? '데이터 누락' : undefined,
+        }
+      }),
+      entity: design.data_model.entities.map((e) => ({ column: 'entity', id: e.entity_id, name: e.label, gap: !links.funcsOfEntity.get(e.entity_id)?.length ? '쓰는 기능 없음' : undefined })),
+    }
+  }, [design, links, includeNfr])
   const lit = useMemo(() => (selected ? connected(selected, links, includeNfr) : null), [selected, links, includeNfr])
-  const gaps = Object.values(columns).flat().filter((n) => n.gap).length
+  const nodes = Object.values(columns).flat()
+  const gaps = nodes.filter((n) => n.gap).length
+  const lacks = nodes.filter((n) => n.lack).length
   const pageOf: Record<Column, Page> = { req: 'requirements', func: 'spec', entity: 'erd' }
 
   return (
     <>
-      <Toolbar summary={gaps === 0 ? '연결 누락 없음' : `연결 누락 ${gaps}건`}>
+      <Toolbar summary={[gaps === 0 ? '연결 누락 없음' : `연결 누락 ${gaps}건`, ...(lacks ? [`데이터 누락 ${lacks}건`] : [])].join(' · ')}>
         <Checkbox checked={gapsOnly} onChange={setGapsOnly} label="누락만 보기" />
         <Checkbox checked={includeNfr} onChange={(v) => { setIncludeNfr(v); setSelected(null) }} label="비기능 요구사항 포함" />
       </Toolbar>
@@ -514,7 +532,7 @@ function Trace({ ctx }: { ctx: Ctx }) {
       </p>
       <div className="grid gap-4 lg:grid-cols-3">
         {([['req', '요구사항'], ['func', '기능'], ['entity', '테이블']] as const).map(([key, title]) => {
-          const list = columns[key].filter((n) => !gapsOnly || n.gap || lit?.has(n.id))
+          const list = columns[key].filter((n) => !gapsOnly || n.gap || n.lack || lit?.has(n.id))
           return (
             <section key={key} aria-label={title} className="min-w-0">
               <h2 className="mb-2 flex items-baseline justify-between border-b border-line-strong pb-1.5 text-label font-semibold">
@@ -537,7 +555,13 @@ function Trace({ ctx }: { ctx: Ctx }) {
                       >
                         <span className="col-start-1 truncate font-mono text-micro text-fg-3">{n.id}</span>
                         <span className="col-start-1 text-small">{n.name}</span>
-                        {n.gap && <span className="col-start-2 row-span-2 row-start-1 self-center text-micro font-semibold text-danger">{n.gap}</span>}
+                        {(n.gap || n.lack || n.note) && (
+                          <span className="col-start-2 row-span-2 row-start-1 flex flex-col items-end self-center text-micro">
+                            {n.gap && <span className="font-semibold text-danger">{n.gap}</span>}
+                            {n.lack && <span className="font-semibold text-warn">{n.lack}</span>}
+                            {n.note && <span className="text-fg-3">{n.note}</span>}
+                          </span>
+                        )}
                       </button>
                     </li>
                   )
