@@ -1,6 +1,6 @@
 import { ArrowRight, FileText, TreeStructure, UploadSimple } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { getLlmOptions, type LlmOptions } from '../../api'
+import { getLlmOptions, getNotices, type LlmOptions, type Notice } from '../../api'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
 import { HomeInsights } from '../components/Insights'
@@ -65,6 +65,8 @@ export function Home({ shell }: { shell: ShellBase }) {
             )}
           </section>
 
+          <NoticesCard navigate={navigate} reloadKey={projects} />
+
           <Card aria-labelledby="recent-drafts">
             <CardHeader eyebrow="Drafts" title="최근 초안" titleId="recent-drafts" actions={<Button size="sm" variant="ghost" onClick={onReload}>새로고침</Button>} />
             {projects.state === 'loading' && <Loading label="초안 목록을 불러오는 중" lines={5} />}
@@ -115,6 +117,41 @@ export function Home({ shell }: { shell: ShellBase }) {
           <NewRunCard canUpload={can(user, 'upload')} onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
         </div>
     </Shell>
+  )
+}
+
+/** 나에게 온 알림 (내 역할 기준, 모든 프로젝트): 수정 지시·기능 명세 대기·승인 요청·승인 대기. 누르면 그 화면으로 */
+function NoticesCard({ navigate, reloadKey }: { navigate: ShellBase['navigate']; reloadKey: unknown }) {
+  const [list, setList] = useState<Notice[] | null>(null)
+  useEffect(() => { getNotices().then(setList).catch(() => setList([])) }, [reloadKey])
+  const KIND: Record<Notice['kind'], { tone: Tone; label: string }> = {
+    directive: { tone: 'warn', label: '수정 지시' }, waiting: { tone: 'neutral', label: '대기' },
+    request: { tone: 'info', label: '승인 요청' }, decide: { tone: 'info', label: '승인 대기' },
+  }
+  return (
+    <Card aria-labelledby="my-notices">
+      <CardHeader eyebrow="Notices" title="나에게 온 알림" titleId="my-notices"
+        actions={<span className="text-label font-medium tabular-nums">{list?.length ?? 0}건</span>} />
+      {list === null ? <Loading label="알림을 불러오는 중" lines={2} /> : list.length === 0 ? (
+        <p className="px-5 pb-5 text-small text-fg-3">새 알림이 없습니다.</p>
+      ) : (
+        <ul className="divide-y divide-line px-2 pb-2">
+          {list.slice(0, 10).map((n, i) => (
+            <li key={i}>
+              <button type="button" onClick={() => navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-sunken">
+                <Badge tone={KIND[n.kind].tone}>{KIND[n.kind].label}</Badge>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-label font-medium">{n.title}</span>
+                  <span className="block truncate text-small text-fg-3">{n.project}{n.detail ? ` · ${n.detail}` : ''}</span>
+                </span>
+                <span className="shrink-0 text-micro text-fg-3 tabular-nums">{formatDate(n.at)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   )
 }
 

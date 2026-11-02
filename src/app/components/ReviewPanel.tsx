@@ -1,6 +1,6 @@
 import { ArrowRight, CheckCircle, LockSimple, MagicWand, Wrench } from '@phosphor-icons/react'
 import { useId, useMemo, useState } from 'react'
-import type { DispositionChoice } from '../../api'
+import { resolveDirective, type DispositionChoice } from '../../api'
 import { formatDate } from '../../labels'
 import type { Draft } from '../lib/draft'
 import { KIND_LABEL, remarkDisposition, summarize, type ReviewItem, type ReviewKind } from '../lib/review'
@@ -39,6 +39,7 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
       assumption: open((i) => i.kind === 'assumption'),
       issue: open((i) => i.kind === 'issue'),
       remark: open((i) => i.kind === 'remark'),
+      directive: open((i) => i.kind === 'directive'),
       check: open((i) => i.kind === 'check'),
     }
   }, [items, onlyOpen])
@@ -71,6 +72,7 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
             { value: 'assumption', label: KIND_LABEL.assumption, count: counts.assumption },
             { value: 'issue', label: KIND_LABEL.issue, count: counts.issue },
             { value: 'remark', label: KIND_LABEL.remark, count: counts.remark },
+            { value: 'directive', label: KIND_LABEL.directive, count: counts.directive },
             { value: 'check', label: KIND_LABEL.check, count: counts.check },
           ]}
         />
@@ -155,11 +157,12 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
         <fieldset disabled={draft.readOnly} className="min-w-0">
           {item.question && <QuestionAnswer item={item} draft={draft} />}
           {item.kind === 'remark' && <RemarkDisposition item={item} draft={draft} />}
+          {item.directive && <DirectiveResolution item={item} />}
         </fieldset>
       </div>
 
       <fieldset disabled={draft.readOnly} className="sm:pt-6">
-        {item.kind === 'remark' ? null : item.auto ? (
+        {item.kind === 'remark' || item.kind === 'directive' ? null : item.auto ? (
           <span className="inline-flex items-center gap-1.5 text-small text-fg-3"><Wrench size={14} aria-hidden="true" />고치면 저절로 해결</span>
         ) : !item.question && (
           <Checkbox
@@ -179,6 +182,60 @@ const CHOICES: { value: DispositionChoice; label: string; hint: string }[] = [
   { value: 'not_issue', label: '문제 아님', hint: '지금 설계가 맞습니다' },
   { value: 'later', label: '미해결로 둠', hint: '고객 확인 등으로 나중에 정합니다' },
 ]
+
+/** 팀장 지시 항목 처리가 바뀌었음을 작업 화면에 알린다 (지시 목록을 다시 읽음) */
+export const DIRECTIVES_CHANGED = 'directives:changed'
+
+/** 팀장 지시 처리: 반영함 / 그대로 둠(이유 필수). 서버(approval.resolutions)에 바로 남는다 (LLM 없음) */
+function DirectiveResolution({ item }: { item: ReviewItem }) {
+  const d = item.directive!
+  const [choice, setChoice] = useState<'applied' | 'kept' | ''>(d.resolution?.choice ?? '')
+  const [note, setNote] = useState(d.resolution?.note ?? '')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const noteId = useId()
+  const save = async (next: 'applied' | 'kept' | '', text: string) => {
+    setSaving(true)
+    setError('')
+    try {
+      await resolveDirective({ project: d.project, final: d.final, stage: d.stage, target_id: d.target_id, choice: next, note: text })
+      window.dispatchEvent(new Event(DIRECTIVES_CHANGED))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <fieldset className="mt-3" disabled={saving}>
+      <legend className="mb-1.5 text-micro text-fg-3">처리 (필수)</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {([['applied', '반영함', '지시대로 고쳤습니다'], ['kept', '그대로 둠', '고치지 않습니다 (이유 필수)']] as const).map(([value, label, hint]) => {
+          const chosen = choice === value
+          return (
+            <button key={value} type="button" aria-pressed={chosen} title={hint}
+              onClick={() => { const next = chosen ? '' : value; setChoice(next); if (next !== 'kept') void save(next, note) }}
+              className={cx('min-h-8 rounded-sm border px-2.5 text-small transition-colors duration-150',
+                chosen ? 'border-fg bg-primary text-on-primary' : 'border-line-strong bg-card text-fg-2 hover:border-control hover:text-fg')}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+      {choice && (
+        <div className="mt-2 flex flex-wrap items-end gap-1.5">
+          <span className="min-w-0 flex-1">
+            <label htmlFor={noteId} className="block text-micro text-fg-3">{choice === 'kept' ? '그대로 두는 이유 (필수)' : '메모 (선택)'}</label>
+            <TextInput id={noteId} dense className="mt-1 max-w-xl" value={note} maxLength={500}
+              placeholder={choice === 'kept' ? '예: 결재선은 앱 설정으로 처리' : '예: 집행일 컬럼 추가함'} onChange={(e) => setNote(e.target.value)} />
+          </span>
+          <Button size="sm" variant="primary" disabled={choice === 'kept' && !note.trim()} onClick={() => void save(choice, note)}>저장</Button>
+        </div>
+      )}
+      {error && <p role="alert" className="mt-1 text-small text-danger">{error}</p>}
+    </fieldset>
+  )
+}
 
 /** 의미 검토 지적 처리: 셋 중 하나를 반드시 고른다 (메모는 선택). ERD 저장·최종 확정 때 서버에 남는다 */
 function RemarkDisposition({ item, draft }: { item: ReviewItem; draft: Draft }) {

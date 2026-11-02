@@ -1,3 +1,4 @@
+import type { Directive } from '../../api'
 import type { Design, Entity, FunctionSpec, Issue, Question } from '../../types'
 import type { DraftState } from './draft'
 
@@ -13,7 +14,7 @@ import type { DraftState } from './draft'
 //               → ERD 화면에서 '반영함·문제 아님·미해결로 둠' 중 하나를 반드시 고른다 (최종 확정 때 서버에 남는다)
 // - check     : 편집 결과를 화면에서 바로 검사한 것 (PK 없음 등) → 고치면 저절로 해결
 
-export type ReviewKind = 'requirement' | 'question' | 'unconfirmed' | 'assumption' | 'issue' | 'remark' | 'check'
+export type ReviewKind = 'requirement' | 'question' | 'unconfirmed' | 'assumption' | 'issue' | 'remark' | 'directive' | 'check'
 
 export interface ReviewItem {
   id: string
@@ -27,6 +28,27 @@ export interface ReviewItem {
   auto: boolean            // 편집으로만 해결 (체크 불가)
   question?: Question
   issue?: Issue
+  /** 팀장 수정 지시 항목: 반영함 / 그대로 둠(이유)을 서버에 남긴다 (LLM 없음) */
+  directive?: { project: string; final: string; stage: 'spec' | 'erd'; target_id: string; resolution: Directive['items'][number]['resolution'] }
+}
+
+/** 이 화면(단계·버전)에서 처리할 팀장 지시 항목 → 필수 확인 항목 */
+export function directiveItems(directives: Directive[], page: 'spec' | 'erd', version: string): ReviewItem[] {
+  return directives
+    .filter((d) => page === 'spec' ? d.targets.includes('spec') && d.spec_version === version && !d.spec_done
+      : d.erd_version === version && !d.erd_waiting)
+    .flatMap((d) => d.items.filter((i) => i.stage === page).map((i) => ({
+      id: `directive:${d.final}:${i.stage}:${i.target_id}`,
+      kind: 'directive' as const,
+      title: `팀장 지시: ${i.note || d.comment || '고칠 것'}`,
+      detail: `${d.by?.name ?? '팀장'} · 최종본 v${d.final}${i.resolution ? ` · ${i.resolution.choice === 'applied' ? '반영함' : '그대로 둠'} (${i.resolution.by.name})${i.resolution.note ? ` — ${i.resolution.note}` : ''}` : ''}`,
+      targetId: i.target_id,
+      targetLabel: i.label,
+      required: true,
+      resolved: Boolean(i.resolution),
+      auto: false,
+      directive: { project: d.project, final: d.final, stage: i.stage, target_id: i.target_id, resolution: i.resolution },
+    })))
 }
 
 export const KIND_LABEL: Record<ReviewKind, string> = {
@@ -36,6 +58,7 @@ export const KIND_LABEL: Record<ReviewKind, string> = {
   assumption: '가정',
   issue: '검토 지적',
   remark: '의미 검토 지적',
+  directive: '팀장 지시',
   check: '자동 검사',
 }
 

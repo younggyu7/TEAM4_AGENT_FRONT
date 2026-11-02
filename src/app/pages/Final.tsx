@@ -11,7 +11,7 @@ import { relationsOf } from '../lib/erd'
 import { FullErd } from './Erd'
 
 // 최종 산출물: 최종본(v<ERD>.1)에 저장된 결과를 보여주기만 한다 (고치는 단계가 아님 — 바꾸려면 ERD 화면에서 새 버전)
-export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, onDecided }: {
+export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, onDecided, previous }: {
   design: Design
   project: string
   version: string
@@ -26,6 +26,8 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
   canDecide: boolean
   /** 승인·수정 지시를 남긴 뒤 버전 기록을 다시 읽는다 */
   onDecided: () => void
+  /** 이 최종본보다 먼저 받은 수정 지시 (그 처리 결과를 보고 승인한다) */
+  previous?: VersionRecord
 }) {
   // 최종본은 확정한 ERD 아래 번호(v2.1 → v2.1.1). 아직 없으면 ERD 버전을 미리 보기로 보여준다
   const isFinal = record?.stage === 'final' || version.split('.').length === 3
@@ -69,6 +71,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         </div>
       </Card>
 
+      {isFinal && record && previous?.approval && !record.approval && <PreviousDirective record={previous} />}
       {isFinal && record && <DecisionCard project={project} version={version} record={record} design={design} canDecide={canDecide} onDecided={onDecided} />}
 
       <RemarksCard remarks={remarks} isFinal={isFinal} onOpen={onOpenEntity} entities={new Set(entities.map((e) => e.entity_id))} />
@@ -224,6 +227,40 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided }
           </details>
         )}
       </div>
+    </Card>
+  )
+}
+
+/** 지난 수정 지시의 처리 결과: 팀장이 이 새 최종본을 승인하기 전에 무엇이 어떻게 반영됐는지 본다 */
+function PreviousDirective({ record }: { record: VersionRecord }) {
+  const a = record.approval!
+  const resolutions = (a as Approval & { resolutions?: Record<string, { choice: string; note: string; by: { name: string } }> }).resolutions ?? {}
+  const items = a.items ?? []
+  const applied = items.filter((i) => resolutions[`${i.stage}:${i.target_id}`]?.choice === 'applied').length
+  return (
+    <Card aria-labelledby="prev-directive">
+      <CardHeader eyebrow="Previous" title={`지난 수정 지시 처리 결과 (최종본 v${record.design_version})`} titleId="prev-directive">
+        <p className="mt-1 text-small text-fg-3">
+          {a.by.name} · {formatDate(a.at)}{a.comment && ` — ${a.comment}`}
+          {items.length > 0 && ` · 항목 ${items.length}건 중 반영 ${applied}건`}
+        </p>
+      </CardHeader>
+      {items.length > 0 && (
+        <ul className="space-y-1.5 px-5 pb-5 text-small">
+          {items.map((i) => {
+            const r = resolutions[`${i.stage}:${i.target_id}`]
+            return (
+              <li key={`${i.stage}:${i.target_id}`} className="flex flex-wrap items-baseline gap-1.5">
+                <Badge tone={!r ? 'danger' : r.choice === 'applied' ? 'ok' : 'neutral'}>{!r ? '처리 안 됨' : r.choice === 'applied' ? '반영함' : '그대로 둠'}</Badge>
+                <span className="text-fg-3">{STAGE_NAME[i.stage]}</span>
+                <span className="font-mono text-micro">{i.target_id}</span> {i.label}
+                <span className="text-fg-2">— 지시: {i.note || '—'}</span>
+                {r && <span className="text-fg-3">· {r.by.name}{r.note ? `: ${r.note}` : ''}</span>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
     </Card>
   )
 }

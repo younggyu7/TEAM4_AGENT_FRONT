@@ -47,6 +47,46 @@ export interface Member {
   permissions: Permission[]
 }
 
+/** 끝나지 않은 팀장 수정 지시와 진행 (서버 services/directives.py가 계산). 기능 명세가 대상이면 기능 명세 먼저,
+ * ERD 항목은 새 기능 명세의 ERD(erd_version)가 생긴 뒤 그 ERD에서 처리한다. 그동안 옛 ERD는 잠긴다 */
+export interface Directive {
+  project: string
+  final: string
+  at: string
+  by: { id: number; name: string; role: string } | null
+  comment: string
+  targets: ('spec' | 'erd')[]
+  items: (ChangeItem & { resolution: { choice: 'applied' | 'kept'; note: string; by: { name: string }; at: string } | null })[]
+  spec_version: string
+  spec_done: boolean
+  new_spec: string | null
+  erd_version: string | null
+  erd_waiting: boolean
+}
+
+/** 나에게 온 알림 (역할별): 수정 지시·기능 명세 대기·승인 요청·승인 대기 */
+export interface Notice {
+  project: string
+  kind: 'directive' | 'waiting' | 'request' | 'decide'
+  at: string
+  page: 'spec' | 'erd' | 'final'
+  version: string
+  title: string
+  detail: string
+}
+
+export async function getDirectives(project: string): Promise<Directive[]> {
+  return ((await (await request(`/projects/directives?${query({ project })}`)).json()) as { directives: Directive[] }).directives
+}
+
+export async function resolveDirective(body: { project: string; final: string; stage: 'spec' | 'erd'; target_id: string; choice: 'applied' | 'kept' | ''; note: string }): Promise<void> {
+  await post('/projects/directives/resolve', body)
+}
+
+export async function getNotices(): Promise<Notice[]> {
+  return ((await (await request('/notices')).json()) as { notices: Notice[] }).notices
+}
+
 /** 수정 지시가 돌려보낸 단계 (예전 기록은 target 하나) */
 export const targetsOf = (a: Approval): ('spec' | 'erd')[] => a.targets?.length ? a.targets : a.target ? [a.target] : []
 

@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, FloppyDisk, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, BellSimple, CheckCircle, CircleNotch, FloppyDisk, LockSimple, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDate } from '../../labels'
 import type { Design, VersionRecord } from '../../types'
@@ -7,8 +7,9 @@ import { PageHeader } from '../components/PageHeader'
 import { SaveVersionDialog } from '../components/SaveVersionDialog'
 import { Shell, type ShellBase } from '../components/Shell'
 import { StageStepper } from '../components/StageStepper'
-import { targetsOf } from '../../api'
-import { Button, Card, ErrorNote, Loading } from '../components/ui'
+import { getDirectives, getNotices, type Directive, type Notice } from '../../api'
+import { DIRECTIVES_CHANGED } from '../components/ReviewPanel'
+import { Button, Card, cx, ErrorNote, Loading } from '../components/ui'
 import { useDesign } from '../lib/data'
 import { mergedEntities, mergedFunctions, pullDraft, readDraft, useDraft, type ConfirmStage, type Draft, type DraftState, type DraftSync, type SaveStatus } from '../lib/draft'
 import { can, NEEDS } from '../lib/session'
@@ -16,7 +17,7 @@ import { readStore } from '../lib/storage'
 import { specOf, stageTargets } from '../lib/versions'
 import { JobPanel } from '../components/JobPanel'
 import { startReviewJob, useJob } from '../lib/jobs'
-import { erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
+import { directiveItems, erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
 import { isDocPage, PAGE_LABEL, type Page, type Route, type StagePage } from '../lib/route'
 import { DocsView } from './Docs'
 import { ErdEditor } from './Erd'
@@ -56,13 +57,34 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     specEdit: can(me, 'spec_edit'), specConfirm: can(me, 'spec_confirm'),
     erdEdit: can(me, 'erd_edit'), erdConfirm: can(me, 'erd_confirm'), final: can(me, 'final_decide'),
   }
-  const canSave = route.page === 'spec' ? perm.specEdit : route.page === 'erd' ? perm.erdEdit : false
+  // 팀장 수정 지시의 진행(서버가 계산)과 나에게 온 알림. 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다
+  const allVersions = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project)?.versions ?? [] : []
+  const [directives, setDirectives] = useState<Directive[]>([])
+  const [notices, setNotices] = useState<Notice[]>([])
+  useEffect(() => {
+    const load = () => {
+      getDirectives(route.project).then(setDirectives).catch(() => setDirectives([]))
+      getNotices().then((list) => setNotices(list.filter((n) => n.project === route.project))).catch(() => setNotices([]))
+    }
+    load()
+    window.addEventListener(DIRECTIVES_CHANGED, load)
+    return () => window.removeEventListener(DIRECTIVES_CHANGED, load)
+  }, [route.project, route.version, shell.projects])
+  // 기능 명세 수정 지시가 진행 중인 옛 계보의 ERD는 잠근다 (서버도 막는다): 새 기능 명세의 ERD에서 고친다
+  const lockedBy = route.page === 'erd'
+    ? directives.find((d) => d.targets.includes('spec') && d.spec_version === specOf(allVersions, route.version)) : undefined
+  const lockReason = lockedBy ? `팀장이 기능 명세 수정을 지시해(최종본 v${lockedBy.final}) 이 ERD는 잠겼습니다. `
+    + (lockedBy.erd_version ? `새 ERD v${lockedBy.erd_version}에서 작업하세요.` : '새 기능 명세가 올라오면 그 ERD에서 고칩니다.') : ''
+  const canSave = route.page === 'spec' ? perm.specEdit : route.page === 'erd' ? perm.erdEdit && !lockedBy : false
   const draft = useDraft(design, route.project, route.version, canSave)
   const project = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project) : undefined
   const versions = project?.versions ?? []
   // 오른쪽 진행 상황은 어느 화면에서든 기능 명세·ERD 둘 다 보여준다
-  const specItems = useMemo(() => specReview(design, draft.functions, draft.state), [design, draft.functions, draft.state])
-  const erdItems = useMemo(() => erdReview(design, draft.entities, draft.state), [design, draft.entities, draft.state])
+  // 확인 필요 항목 + 이 화면에서 처리할 팀장 지시 항목(필수)
+  const specItems = useMemo(() => [...specReview(design, draft.functions, draft.state), ...directiveItems(directives, 'spec', route.version)],
+    [design, draft.functions, draft.state, directives, route.version])
+  const erdItems = useMemo(() => [...erdReview(design, draft.entities, draft.state), ...directiveItems(directives, 'erd', route.version)],
+    [design, draft.entities, draft.state, directives, route.version])
   const setFocus = (focus?: string) => shell.navigate({ ...route, focus }, true)
   const edited = draft.editedFunctions + draft.editedEntities
   const record = versions.find((v) => v.design_version === route.version)
@@ -99,21 +121,15 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     return at && myJob?.source === source && myJob.status !== 'failed' ? at : undefined
   }
   // 팀장 수정 지시: 이 단계로 돌려보낸 지시 중 아직 새 버전으로 고치지 않은 것 (지시 뒤에 같은 단계 버전이 생기면 처리된 것)
+  // 이 화면에서 처리할 팀장 수정 지시 (기능 명세: 그 기능 명세 / ERD: 지시를 처리할 ERD 버전)
   const request = useMemo(() => {
     if (route.page !== 'spec' && route.page !== 'erd') return undefined
     const page = route.page
-    const asked = versions
-      .filter((v) => v.stage === 'final' && v.approval?.decision === 'changes' && targetsOf(v.approval).includes(page)
-        && specOf(versions, v.design_version) === targets.spec)
-      .sort((a, b) => (b.approval!.at).localeCompare(a.approval!.at))[0]
-    if (!asked) return undefined
-    const at = asked.approval!.at
-    const later = versions.some((v) => specOf(versions, v.design_version) === targets.spec && (v.created_at ?? '') > at
-      && (page === 'erd' ? v.stage === 'data_modeler' : false))
-      || versions.some((v) => page === 'spec' && v.stage === 'function_designer' && v.parent === targets.spec && (v.created_at ?? '') > at)
-    return later ? undefined : { version: asked.design_version, ...asked.approval!,
-      items: (asked.approval!.items ?? []).filter((i) => i.stage === page) }
-  }, [versions, route.page, targets.spec])
+    const d = directives.find((x) => page === 'spec' ? x.targets.includes('spec') && x.spec_version === route.version && !x.spec_done
+      : x.erd_version === route.version && !x.erd_waiting)
+    return d ? { version: d.final, by: d.by ?? { id: 0, name: '팀장', role: 'lead' }, at: d.at, comment: d.comment,
+      items: d.items.filter((i) => i.stage === page) } : undefined
+  }, [directives, route.page, route.version])
   // 이 기능 명세 계보에서 팀장이 승인한 최종본 (기능 명세·ERD 화면에 알린다: 고치면 새 버전 → 다시 승인)
   const approvedFinal = versions.find((v) => v.stage === 'final' && v.approval?.decision === 'approve'
     && specOf(versions, v.design_version) === targets.spec)
@@ -141,7 +157,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   const asked = Boolean(draft.request) || me.role === 'lead'
   const WAITING = "파트원의 '수정 완료 승인 요청'을 기다리는 중입니다 (요청이 오면 켜집니다)"
   const specReady = !running && perm.specConfirm && asked && (specSummary?.requiredLeft ?? 1) === 0 && specChanged
-  const erdReady = !running && perm.erdConfirm && asked && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0
+  const erdReady = !running && !lockedBy && perm.erdConfirm && asked && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0
   const openJobVersion = (v: string) =>
     shell.navigate({ ...route, version: v, focus: undefined, ...(myJob?.source === 'review' ? { page: 'final' as const } : {}) })
 
@@ -182,7 +198,9 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         ? <FinalView design={design} project={route.project} version={route.version} record={record} finalized={finalized}
             onOpenEntity={(id) => open('erd', id)} onOpenDevSpec={(name) => open('dev-spec', name)}
             review={reviewJob && [reviewJob.base, reviewJob.new_version].includes(route.version) ? reviewJob : undefined}
-            canDecide={perm.final} onDecided={shell.onReloadProjects} />
+            canDecide={perm.final} onDecided={shell.onReloadProjects}
+            previous={versions.filter((v) => v.stage === 'final' && v.design_version !== route.version && v.approval?.decision === 'changes'
+              && v.approval.at < (record?.created_at ?? '')).sort((a, b) => b.approval!.at.localeCompare(a.approval!.at))[0]} />
         : <DocsView page={route.page} design={draft.merged} saved={design} project={route.project} version={route.version}
             versionRecord={record} versions={versions} finalizedAt={finalized.final} focus={route.focus} onOpen={open} />
 
@@ -224,18 +242,18 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     </>
   ) : route.page === 'erd' ? (
     <>
-      {!finalized.erd && perm.erdEdit && <ResetButton draft={draft} />}
-      <Button icon={<FloppyDisk />} disabled={running || !perm.erdEdit} onClick={() => setDialog('erd')}
-        title={perm.erdEdit ? undefined : NEEDS.erd_edit}>ERD 저장하고 새 버전 만들기</Button>
+      {!finalized.erd && perm.erdEdit && !lockedBy && <ResetButton draft={draft} />}
+      <Button icon={<FloppyDisk />} disabled={running || !perm.erdEdit || Boolean(lockedBy)} onClick={() => setDialog('erd')}
+        title={lockReason || (perm.erdEdit ? undefined : NEEDS.erd_edit)}>ERD 저장하고 새 버전 만들기</Button>
       {finalized.erd
         ? <Button variant="primary" icon={<ArrowRight />} onClick={() => open('final')}>최종 산출물 보기</Button>
         : !perm.erdConfirm && perm.erdEdit
-          ? <RequestButton draft={draft} ready={!running && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0}
-              reason={running ? '작업이 끝난 뒤 요청하세요'
+          ? <RequestButton draft={draft} ready={!running && !lockedBy && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0}
+              reason={lockReason || running ? lockReason || '작업이 끝난 뒤 요청하세요'
                 : draft.editedEntities ? `저장하지 않은 테이블 수정 ${draft.editedEntities}건을 먼저 'ERD 저장하고 새 버전 만들기'로 저장하세요 (새 버전에서 요청)`
                 : `필수 확인 항목 ${erdSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`} />
           : <ConfirmErdButton ready={erdReady} left={erdSummary?.requiredLeft ?? 0} unsaved={draft.editedEntities} onConfirm={startReview}
-              denied={perm.erdConfirm ? (asked ? undefined : WAITING) : NEEDS.erd_confirm} />}
+              denied={lockReason || (perm.erdConfirm ? (asked ? undefined : WAITING) : NEEDS.erd_confirm)} />}
     </>
   ) : null
 
@@ -268,6 +286,30 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
       <p className="sr-only">v{route.version} · {formatDate(design.meta.generated_at)} 생성</p>
       <StageStepper page={route.page} version={route.version} targets={targets} finalized={finalized}
         decision={finalRecord?.approval} onGo={(p) => open(p)} />
+      {/* 나에게 온 알림 (이 프로젝트, 내 역할): 수정 지시·기능 명세 대기·승인 요청·승인 대기 */}
+      {notices.length > 0 && (
+        <ul aria-label="알림" className="mb-4 space-y-1">
+          {notices.map((n, i) => (
+            <li key={i}>
+              <button type="button" onClick={() => shell.navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })}
+                className={cx('flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-3 py-1.5 text-left text-small hover:opacity-85',
+                  n.kind === 'waiting' ? 'bg-sunken text-fg-2' : n.kind === 'request' || n.kind === 'decide' ? 'bg-info-soft text-info' : 'bg-warn-soft text-warn')}>
+                <BellSimple size={14} aria-hidden="true" />
+                <span className="font-medium">{n.title}</span>
+                {n.detail && <span className="text-fg-3">{n.detail}</span>}
+                <span className="ml-auto text-micro text-fg-3 tabular-nums">{formatDate(n.at)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {lockReason && (
+        <p role="note" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-line-strong bg-sunken px-4 py-3 text-label text-fg-2">
+          <LockSimple size={18} aria-hidden="true" />
+          <span className="min-w-0 flex-1">{lockReason}</span>
+          {lockedBy?.erd_version && <Button size="sm" icon={<ArrowRight />} onClick={() => shell.navigate({ ...route, version: lockedBy.erd_version!, focus: undefined })}>새 ERD v{lockedBy.erd_version} 열기</Button>}
+        </p>
+      )}
       {myJob && (route.page === 'erd' || (route.page === 'spec' && myJob.source === 'answers') || (route.page === 'final' && myJob.source === 'review'))
         && <JobPanel job={myJob} project={route.project} onOpen={openJobVersion} current={route.version} />}
       {approvedFinal && (route.page === 'spec' || route.page === 'erd') && (
