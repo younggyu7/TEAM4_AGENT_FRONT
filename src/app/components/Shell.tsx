@@ -1,13 +1,11 @@
-import {
-  ArrowsClockwise, Files, FileText, FolderSimple, House, List, SealCheck, SignOut, TreeStructure, X,
-} from '@phosphor-icons/react'
-import { useEffect, useMemo, useRef, type ReactNode } from 'react'
+import { ArrowsClockwise, CaretDown, FolderSimple, House, List, SignOut, TreeStructure, X } from '@phosphor-icons/react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Project } from '../../types'
 import { draftSummaries } from '../lib/draft'
 import type { Load } from '../lib/data'
-import { isDocPage, type Page, type Route, type StagePage } from '../lib/route'
-import { stageTargets } from '../lib/versions'
+import type { Route } from '../lib/route'
 import { initials, type User } from '../lib/session'
+import { VersionsCard } from './Insights'
 import { cx, fmt, IconButton } from './ui'
 
 /** 모든 화면이 같이 쓰는 값 (App이 만든다) */
@@ -96,6 +94,9 @@ export function Shell({ user, onSignOut, route, navigate, projects, onReloadProj
   )
 }
 
+/** 왼쪽 프로젝트 목록에 처음 보이는 수 (넘으면 '더보기') */
+const PROJECTS_SHOWN = 3
+
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex min-w-0 items-center gap-2.5">
@@ -121,23 +122,16 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
 }) {
   const list = projects.state === 'ready' ? projects.data : []
   const current = route.name === 'workspace' ? route : null
-  // 기능 명세·ERD 메뉴는 보고 있는 프로젝트, 없으면 가장 최근 프로젝트의 최신 버전으로 간다
-  const target = current
-    ? { project: current.project, version: current.version }
-    : list[0] && { project: list[0].id, version: list[0].versions[0].design_version }
+  const project = current ? list.find((p) => p.id === current.project) : undefined
+  // 프로젝트가 많으면 PROJECTS_SHOWN개만 보이고 '더보기'로 펼친다 (보고 있는 프로젝트는 접혀도 보인다)
+  const [expanded, setExpanded] = useState(false)
+  const hidden = Math.max(0, list.length - PROJECTS_SHOWN)
+  const shown = expanded ? list : list.filter((p, i) => i < PROJECTS_SHOWN || p.id === current?.project)
 
   // 초안은 이 브라우저 저장소에 있으므로 화면을 옮길 때마다 다시 센다
   const drafts = useMemo(() => draftSummaries(), [route])
   const inProgress = drafts.filter((d) => d.edited > 0 && d.finalized === 0).length
   const finalized = drafts.filter((d) => d.finalized > 0).length
-
-  // 단계 메뉴는 지금 버전의 계보를 따른다 (기능 명세 v2 → ERD v2.1 → 최종 v2.1.1)
-  const goPage = (page: Page) => {
-    if (!target) return
-    const versions = list.find((p) => p.id === target.project)?.versions ?? []
-    const version = isDocPage(page) ? target.version : stageTargets(versions, target.version)[page as StagePage]
-    navigate({ name: 'workspace', project: target.project, version, page })
-  }
 
   return (
     <div className="flex min-h-full flex-col gap-5 px-3 py-4">
@@ -164,21 +158,13 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
       <nav aria-label="주 메뉴">
         <ul className="space-y-0.5">
           <NavItem icon={<House />} label="홈" active={route.name === 'home'} onClick={() => navigate({ name: 'home' })} />
-          <NavItem icon={<FileText />} label="기능 명세서" active={current?.page === 'spec'} disabled={!target} onClick={() => goPage('spec')} />
-          <NavItem icon={<TreeStructure />} label="ERD" active={current?.page === 'erd'} disabled={!target} onClick={() => goPage('erd')} />
-          <NavItem icon={<SealCheck />} label="최종 산출물" active={current?.page === 'final'} disabled={!target} onClick={() => goPage('final')} />
-          <NavItem
-            icon={<Files />}
-            label="산출물 보기"
-            active={current ? isDocPage(current.page) : false}
-            disabled={!target}
-            onClick={() => goPage('overview')}
-          />
         </ul>
-        {!target && projects.state === 'ready' && (
-          <p className="mt-2 px-2.5 text-small text-fg-3">아직 초안이 없어 기능 명세서·ERD·산출물을 열 수 없습니다.</p>
-        )}
       </nav>
+
+      {/* 보고 있는 프로젝트의 버전 (단계 화면은 그 단계 번호만, 산출물 보기는 전체). 단계 이동은 가운데 위 단계 표시줄 */}
+      {current && project && (
+        <VersionsCard project={project} version={current.version} page={current.page} navigate={navigate} onReloadProjects={onReloadProjects} />
+      )}
 
       {/* 사용자 대시보드 */}
       <section aria-labelledby="my-dashboard">
@@ -199,7 +185,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
         {projects.state === 'loading' && <p role="status" className="px-2.5 text-small text-fg-3">불러오는 중…</p>}
         {projects.state === 'error' && <p role="alert" className="px-2.5 text-small text-danger">목록을 불러오지 못했습니다.</p>}
         <ul className="space-y-0.5">
-          {list.map((p) => {
+          {shown.map((p) => {
             const active = current?.project === p.id
             const latest = p.versions[0]
             return (
@@ -223,6 +209,17 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
             )
           })}
         </ul>
+        {hidden > 0 && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((v) => !v)}
+            className="mt-0.5 flex min-h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-small text-fg-3 transition-colors duration-150 hover:bg-card hover:text-fg"
+          >
+            <CaretDown size={14} aria-hidden="true" className={cx('transition-transform duration-200', expanded && 'rotate-180')} />
+            {expanded ? '접기' : `더보기 (${fmt(hidden)}개)`}
+          </button>
+        )}
       </section>
 
       <div className="mt-auto border-t border-line pt-3">

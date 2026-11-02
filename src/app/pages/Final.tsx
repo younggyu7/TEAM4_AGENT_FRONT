@@ -1,12 +1,12 @@
 import { Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
-import { useEffect, useState } from 'react'
-import type { Job } from '../../api'
+import { useEffect, useId, useState } from 'react'
+import { getTechStacks, setTechStack, type Job } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
-import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Loading } from '../components/ui'
+import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Loading, TextInput } from '../components/ui'
 import { ZipButton } from '../components/ZipButton'
 import { ARTIFACT_FILES, DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
-import { useFile } from '../lib/data'
+import { refreshVersion, useFile } from '../lib/data'
 import { relationsOf } from '../lib/erd'
 import { FullErd } from './Erd'
 
@@ -228,12 +228,8 @@ function DevSpecFilesCard({ design, project, version, onOpen }: {
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
-      {meta && (
-        <p className={cx('mx-5 mb-3 rounded-md px-3 py-2 text-small', meta.stack_basis === '가정' ? 'bg-warn-soft text-warn' : 'bg-sunken')}>
-          기술 스택: <strong>{meta.stack}</strong> ({meta.stack_basis === '원문' ? '원문에 정해짐' : meta.stack_basis === '가정'
-            ? "추천안으로 가정 — 기능 명세 화면의 기술 스택 질문(TQ-001)에 답하고 새 버전으로 다시 만들면 바뀝니다" : '기능 명세에서 정함'})
-        </p>
-      )}
+      {/* 최종 산출물 화면에서 유일하게 고칠 수 있는 것: 개발에 쓸 기술 스택 (LLM 없이 개발 스펙 9개를 다시 쓴다) */}
+      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
           {DEV_SPEC_FILES.map((d, i) => (
@@ -256,6 +252,84 @@ function DevSpecFilesCard({ design, project, version, onOpen }: {
         </ol>
       )}
     </Card>
+  )
+}
+
+/**
+ * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고
+ * design.json(TQ-001 답)·버전 기록(tech_stack)에 남긴다. 원문이 정한 스택은 바꾸지 않는다.
+ */
+function StackPicker({ project, version, stack, basis }: { project: string; version: string; stack: string; basis: string }) {
+  const ids = { group: useId(), custom: useId() }
+  const [choices, setChoices] = useState<{ stack: string; note: string }[] | null>(null)
+  const [editing, setEditing] = useState(basis !== '확정')
+  const [picked, setPicked] = useState(stack)
+  const [custom, setCustom] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => { if (basis !== '원문') getTechStacks().then(setChoices).catch(() => setChoices([])) }, [basis])
+  useEffect(() => { setEditing(basis !== '확정'); setPicked(stack) }, [stack, basis])
+  // 직접 적어 확정한 스택은 '직접 입력' 칸에 채워 둔다
+  useEffect(() => { if (choices && !choices.some((c) => c.stack === stack)) setCustom(stack) }, [choices, stack])
+
+  if (basis === '원문') {
+    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> (원문에 정해짐)</p>
+  }
+  const isCustom = picked === '' || !(choices ?? []).some((c) => c.stack === picked)
+  const value = (isCustom ? custom : picked).trim()
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      await setTechStack(project, version, value)
+      refreshVersion(project, version)   // 개발 스펙 문서·design.json을 다시 읽는다
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+  if (!editing) {
+    return (
+      <div className="mx-5 mb-3 flex flex-wrap items-center gap-2 rounded-md bg-ok-soft px-3 py-2 text-small">
+        <SealCheck size={16} className="text-ok" aria-hidden="true" />
+        <span className="min-w-0 flex-1">기술 스택: <strong>{stack}</strong> (확정 — 개발 스펙 문서에 이 값이 들어 있습니다)</span>
+        <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>바꾸기</Button>
+      </div>
+    )
+  }
+  return (
+    <fieldset aria-labelledby={ids.group} className="mx-5 mb-3 space-y-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-3 text-small">
+      <legend id={ids.group} className="sr-only">기술 스택 정하기</legend>
+      <p className="text-warn">
+        {basis === '가정'
+          ? <>원문에 개발 언어·프레임워크가 없어 추천안(<strong>{stack}</strong>)을 가정으로 썼습니다. 개발에 쓸 스택을 골라 확정하세요 (LLM 사용 없음).</>
+          : '개발에 쓸 기술 스택을 고르세요 (LLM 사용 없음).'}
+      </p>
+      {choices === null ? <Loading label="선택지를 불러오는 중" lines={2} /> : (
+        <div className="space-y-1.5">
+          {choices.map((c, i) => (
+            <label key={c.stack} className="flex cursor-pointer items-start gap-2 rounded-md bg-card px-2.5 py-1.5">
+              <input type="radio" name={ids.group} className="mt-1" checked={picked === c.stack} onChange={() => setPicked(c.stack)} />
+              <span><strong>{c.stack}</strong>{i === 0 && <Badge tone="info" className="ml-1.5">추천</Badge>}<span className="block text-micro text-fg-3">{c.note}</span></span>
+            </label>
+          ))}
+          <label className="flex cursor-pointer items-center gap-2 rounded-md bg-card px-2.5 py-1.5">
+            <input type="radio" name={ids.group} checked={isCustom} onChange={() => setPicked('')} />
+            <span className="shrink-0">직접 입력</span>
+            <TextInput id={ids.custom} dense value={custom} maxLength={200} placeholder="예: Go 1.23 · Gin · PostgreSQL 16"
+              aria-label="기술 스택 직접 입력" onFocus={() => setPicked('')} onChange={(e) => setCustom(e.target.value)} />
+          </label>
+        </div>
+      )}
+      {error && <p role="alert" className="text-danger">{error}</p>}
+      <div className="flex justify-end gap-2">
+        {basis === '확정' && <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
+        <Button size="sm" variant="primary" icon={<SealCheck />} disabled={!value || saving || (basis === '확정' && value === stack)} onClick={() => void save()}>
+          {saving ? '문서 다시 쓰는 중…' : '이 스택으로 확정'}
+        </Button>
+      </div>
+    </fieldset>
   )
 }
 

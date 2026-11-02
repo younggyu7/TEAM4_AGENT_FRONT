@@ -76,17 +76,24 @@ export interface Usage {
   calls: number
   input: number
   output: number
+  /** 캐시에서 읽은·캐시에 쓴 입력 (Anthropic: input에 들어가지 않는다). 기록이 없으면 0 */
+  cacheRead?: number
+  cacheWrite?: number
   /** 그 버전을 만든 LLM 모델 ('- 모델:' 줄). 이 줄이 생기기 전에 만든 버전은 없다 */
   model?: string
 }
 
 const MODEL_LINE = /^- 모델:\s*(.+)$/m
 const USAGE_LINE = /호출\s*([\d,]+)회\s*·\s*입력 토큰\s*([\d,]+)\s*·\s*출력 토큰\s*([\d,]+)/
+const CACHE_LINE = /캐시 읽기\s*([\d,]+)\s*\/\s*쓰기\s*([\d,]+)/
 const num = (s: string) => Number(s.replace(/,/g, ''))
 
 export function parseUsage(report: string | null): Usage | null {
   const m = report && USAGE_LINE.exec(report)
-  return m ? { calls: num(m[1]), input: num(m[2]), output: num(m[3]), model: MODEL_LINE.exec(report)?.[1].trim() } : null
+  if (!m) return null
+  const cache = CACHE_LINE.exec(report)
+  return { calls: num(m[1]), input: num(m[2]), output: num(m[3]), model: MODEL_LINE.exec(report)?.[1].trim(),
+           cacheRead: cache ? num(cache[1]) : 0, cacheWrite: cache ? num(cache[2]) : 0 }
 }
 
 export interface VersionUsage {

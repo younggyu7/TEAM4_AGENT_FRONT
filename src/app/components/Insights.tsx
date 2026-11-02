@@ -4,6 +4,7 @@ import { setVersionTitle } from '../../api'
 import { formatDate } from '../../labels'
 import type { Design, Project } from '../../types'
 import { useUsages, type Load, type VersionUsage } from '../lib/data'
+import { costOf, shortModel, usd } from '../lib/pricing'
 import { isDocPage, type EditPage, type Page, type Route, type StagePage } from '../lib/route'
 import { depth, erdsOf, levelOf, specOf, stageVersions, truncate } from '../lib/versions'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
@@ -12,15 +13,13 @@ import { Badge, Card, CardHeader, compact, cx, fmt, IconButton, Loading, TextInp
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
 
-export function WorkspaceInsights({ design, project, version, reviews, finalized, navigate, onReloadProjects, page }: {
+export function WorkspaceInsights({ design, project, version, reviews, finalized, page }: {
   design: Design
   project?: Project
   version: string
   /** 단계마다 그 단계 버전(기능 명세 v1, ERD v1.2)의 확인 항목 요약. null이면 읽는 중 */
   reviews: Record<EditPage, Summary | null>
   finalized: Partial<Record<EditPage | 'final', string>>
-  navigate: (r: Route) => void
-  onReloadProjects: () => void
   page: Page
 }) {
   const versions = project?.versions ?? [{ design_version: version }]
@@ -31,7 +30,6 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
     <>
       <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
       <TokenCard usages={usages} version={version} />
-      <VersionsCard project={project} version={version} page={page} navigate={navigate} onReloadProjects={onReloadProjects} />
       <IssuesCard design={design} />
     </>
   )
@@ -49,8 +47,8 @@ function treeOrder(a: string, b: string): number {
   return 0
 }
 
-/** 설계 버전 목록: 단계만 다시 만든 버전(v4.1)은 기준 버전 아래에 들여 쓰고, 제목은 그 자리에서 고친다 */
-function VersionsCard({ project, version, page, navigate, onReloadProjects }: {
+/** 설계 버전 목록 (왼쪽 사이드바): 단계만 다시 만든 버전(v4.1)은 기준 버전 아래에 들여 쓰고, 제목은 그 자리에서 고친다 */
+export function VersionsCard({ project, version, page, navigate, onReloadProjects }: {
   project?: Project
   version: string
   page: Page
@@ -255,7 +253,7 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
   return (
     <Card aria-labelledby="tokens-title">
       <CardHeader eyebrow="Tokens" titleId="tokens-title"
-        title={<>토큰 사용량 <span className="font-normal text-fg-3">| (사용 모델: {model ?? (usages.state === 'loading' ? '…' : '기록 없음')})</span></>} />
+        title={<span className="whitespace-nowrap">토큰 사용량 <span className="font-normal text-fg-3" title={model}>· {model ? shortModel(model) : usages.state === 'loading' ? '…' : '모델 기록 없음'}</span></span>} />
       <div className="px-5 pb-5">
         {usages.state === 'loading' && <Loading label="토큰 사용량을 읽는 중" lines={4} />}
         {usages.state === 'error' && <p role="alert" className="text-small text-danger">사용량을 읽지 못했습니다: {usages.message}</p>}
@@ -264,18 +262,26 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
           if (known.length === 0) return <p className="text-small text-fg-3">이 프로젝트의 review_report.md에 사용량 기록이 없습니다.</p>
           const cur = usages.data.find((u) => u.version === version)?.usage
           const sum = known.reduce((a, u) => a + u.usage!.input + u.usage!.output, 0)
+          // 금액: 버전마다 그 버전을 만든 모델 단가로 계산해 더한다 (모델 기록이 없거나 단가를 모르는 버전은 뺀다)
+          const costs = known.map((u) => costOf(u.usage!))
+          const cost = costs.reduce<number>((a, c) => a + (c ?? 0), 0)
+          const unpriced = costs.filter((c) => c === undefined).length
+          const curCost = cur ? costOf(cur) : undefined
           return (
             <>
               <dl className="mb-5 grid grid-cols-2 gap-3">
                 <div>
                   <dt className="text-small text-fg-3">이 버전 (v{version})</dt>
                   <dd className="mt-1 text-title font-medium tabular-nums">{cur ? compact(cur.input + cur.output) : '—'}</dd>
-                  <dd className="text-micro text-fg-3 tabular-nums">{cur ? `호출 ${fmt(cur.calls)}회` : '기록 없음'}</dd>
+                  <dd className="text-micro text-fg-3 tabular-nums">{cur ? `호출 ${fmt(cur.calls)}회${curCost !== undefined ? ` · ${usd(curCost)}` : ''}` : '기록 없음'}</dd>
                 </div>
                 <div>
                   <dt className="text-small text-fg-3">전체 버전 합계</dt>
-                  <dd className="mt-1 text-title font-medium tabular-nums">{compact(sum)}</dd>
-                  <dd className="text-micro text-fg-3 tabular-nums">버전 {known.length}개</dd>
+                  <dd className="mt-1 flex items-baseline gap-2 tabular-nums">
+                    <span className="text-title font-medium">{compact(sum)}</span>
+                    {unpriced < known.length && <span className="text-label font-medium text-fg-2" title="버전마다 그 모델의 입력·출력·캐시 단가로 계산 (USD, 정가)">≈ {usd(cost)}</span>}
+                  </dd>
+                  <dd className="text-micro text-fg-3 tabular-nums">버전 {known.length}개{unpriced > 0 ? ` · ${unpriced}개는 모델 기록·단가 없어 금액 제외` : ''}</dd>
                 </div>
               </dl>
               <TokenBars

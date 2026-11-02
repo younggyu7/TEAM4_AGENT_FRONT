@@ -205,14 +205,12 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           version={route.version}
           reviews={{ spec: specSummary, erd: erdSummary }}
           finalized={finalized}
-          navigate={shell.navigate}
-          onReloadProjects={shell.onReloadProjects}
           page={route.page}
         />
       }
     >
       <p className="sr-only">v{route.version} · {formatDate(design.meta.generated_at)} 생성</p>
-      {!isDocPage(route.page) && <StageStepper page={route.page} targets={targets} finalized={finalized} onGo={(p) => open(p)} />}
+      <StageStepper page={route.page} version={route.version} targets={targets} finalized={finalized} onGo={(p) => open(p)} />
       {myJob && (route.page === 'erd' || (route.page === 'spec' && myJob.source === 'answers') || (route.page === 'final' && myJob.source === 'review'))
         && <JobPanel job={myJob} project={route.project} onOpen={openJobVersion} current={route.version} />}
       {center}
