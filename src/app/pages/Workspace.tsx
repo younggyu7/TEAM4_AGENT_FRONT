@@ -1,7 +1,7 @@
-import { ArrowCounterClockwise, ArrowsClockwise, CheckCircle, CircleNotch, FloppyDisk, LockSimpleOpen, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, FloppyDisk, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDate } from '../../labels'
-import type { Design } from '../../types'
+import type { Design, VersionRecord } from '../../types'
 import { WorkspaceInsights } from '../components/Insights'
 import { PageHeader } from '../components/PageHeader'
 import { SaveVersionDialog } from '../components/SaveVersionDialog'
@@ -65,24 +65,46 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   // (체크는 버전별로 저장되므로 지금 버전으로 세면 ERD·최종 화면에서 기능 명세가 0으로 보인다)
   const specSummary = useStageSummary('spec', route.project, targets.spec, route.version, specItems)
   const erdSummary = useStageSummary('erd', route.project, targets.erd, route.version, erdItems)
-  const finalized = {
-    spec: finalizedOf(route.project, targets.spec, 'spec', route.version, draft),
-    erd: finalizedOf(route.project, targets.erd, 'erd', route.version, draft),
-    final: finalizedOf(route.project, targets.final, 'final', route.version, draft),
-  }
-  const [dialog, setDialog] = useState<'spec' | 'answers' | 'erd' | null>(null)   // answers: AI로 답 반영 (LLM)
+  // answers: AI로 답 반영 (LLM) · redo: 확정한 기능 명세에서 새 기능 명세 버전 만들기 (LLM)
+  const [dialog, setDialog] = useState<'spec' | 'answers' | 'redo' | 'erd' | null>(null)
   const [savedNote, setSavedNote] = useState('')
   const job = useJob(route.project)
   // 이 기능 명세 계보에서 도는(또는 막 끝난) 작업만 이 화면에 보여준다
   const myJob = job && specOf(versions, job.base) === targets.spec ? job : undefined
-  // 기능 명세 화면에서 새로 답한 확인 질문: 있으면 내보내기가 ERD 대신 '답 반영 → 기능 명세 다시 만들기'가 된다
+  const running = myJob?.status === 'running'
+  // 확정: 기능 명세는 '내보내기 → ERD 만들기', ERD는 'ERD 최종 확정하기'를 누른 순간 (다음 단계로 넘어가므로 취소 없음).
+  // 다만 다음 단계 결과가 생기지 않고 작업이 실패했으면(DDL 오류 등) 확정하지 않은 것으로 보고 다시 누를 수 있다.
+  // 다음 단계 결과(이 명세로 만든 ERD 버전·최종본)가 있으면 이 브라우저에 기록이 없어도(다른 PC 등) 확정한 것으로 본다.
+  // 최종 산출물은 최종본(v<ERD>.1)이 만들어진 때
+  const finalRecord = versions.find((v) => v.design_version === targets.final && v.stage === 'final')
+  const erdRecord = targets.erd !== targets.spec ? versions.find((v) => v.design_version === targets.erd) : undefined
+  const pressed = (stage: 'spec' | 'erd', source: string, next?: VersionRecord) => {
+    const at = finalizedOf(route.project, stage === 'spec' ? targets.spec : targets.erd, stage, route.version, draft)
+    if (next) return at ?? next.created_at
+    return at && myJob?.source === source && myJob.status !== 'failed' ? at : undefined
+  }
+  const finalized = {
+    spec: pressed('spec', 'spec', erdRecord),
+    erd: pressed('erd', 'review', finalRecord),
+    final: finalRecord?.created_at,
+  }
+  // 기능 명세 화면에서 새로 답한 확인 질문: 있으면 'AI로 답 반영 → 기능 명세 다시'를 쓸 수 있다
   const answered = Object.keys(newAnswers(design, draft.state)).length
-  // ERD 최종 확정 → 최종본 v<ERD>.1 (추적·의미 검토). 최종본 화면에서 다시 하면 같은 ERD 아래 다음 최종본
+  // ERD 최종 확정 → 최종본 v<ERD>.1 (지적 처리를 남기고 DDL 검증·추적 검토·API 설계)
   const reviewJob = myJob?.source === 'review' ? myJob : undefined
   const startReview = () => {
-    startReviewJob(route.project, targets.erd, shell.onReloadProjects)
+    draft.finalize('erd')
+    startReviewJob(route.project, targets.erd, draft.state.dispositions ?? {}, shell.onReloadProjects)
       .catch((e) => setSavedNote(`최종 확정을 시작하지 못함: ${(e as Error).message}`))
   }
+  // 기능 명세는 내보낸 뒤에도 고쳐서 다시 내보낼 수 있다: 고친 명세를 새 기능 명세 버전(v2)으로 남기고 그 ERD(v2.1)를 만든다
+  // (앞 ERD를 이어받아 바뀐 기능의 테이블만 다시 설계). 내보낸 뒤 고친 것이 없으면 같은 ERD를 또 만들지 않게 버튼을 끈다
+  // (이 브라우저에 내보낸 기록이 없어도 이 기능 명세로 만든 ERD가 있으면 고친 것이 있을 때만)
+  const exportedAt = draft.finalizedAt('spec')
+  const specChanged = exportedAt ? (draft.state.updatedAt ?? '') > exportedAt : !erdRecord || Boolean(draft.state.updatedAt)
+  // 확정 버튼을 켜는 조건: 필수 항목을 모두 해결 + 진행 중 작업 없음 (ERD는 저장하지 않은 테이블 수정도 없어야 함)
+  const specReady = !running && (specSummary?.requiredLeft ?? 1) === 0 && specChanged
+  const erdReady = !running && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0
   const openJobVersion = (v: string) =>
     shell.navigate({ ...route, version: v, focus: undefined, ...(myJob?.source === 'review' ? { page: 'final' as const } : {}) })
 
@@ -108,49 +130,58 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
 
   const center = route.page === 'spec'
     ? <SpecEditor draft={draft} items={specItems} focus={route.focus} onFocus={setFocus} finalizedAt={finalized.spec} version={route.version}
-        nextAction={{ label: '내보내고 ERD 만들기', onClick: () => setDialog('spec') }}
-        // 확정하면 다음 단계로: 이 기능 명세의 ERD가 아직 없으면 ERD 만들기 창, 있으면 ERD 화면
-        onFinalized={() => (targets.erd === targets.spec ? setDialog('spec') : open('erd'))}
-        blockReason={myJob?.status === 'running' && myJob.source === 'answers'
-          ? '확인 질문 답을 반영해 기능 명세를 다시 만드는 중입니다. 끝난 뒤 새 버전에서 확정하세요.' : undefined} />
+        blockReason={running && myJob?.source === 'answers'
+          ? '확인 질문 답을 반영해 기능 명세를 다시 만드는 중입니다. 끝난 뒤 새 버전에서 확정하세요.'
+          : erdRecord && specChanged
+            ? "내보낸 뒤 고친 내용이 있습니다. '내보내기 → ERD 만들기'를 다시 누르면 새 기능 명세 버전과 그 ERD를 만듭니다 (앞 ERD를 이어받아 바뀐 기능의 테이블만 다시 설계)."
+            : undefined} />
     : route.page === 'erd'
       ? <ErdEditor draft={draft} items={erdItems} focus={route.focus} onFocus={setFocus} finalizedAt={finalized.erd} version={route.version}
           onOpenFunction={(id) => open('spec', id)}
-          onFinalized={startReview}
-          nextAction={{ label: '최종 산출물 보기', onClick: () => open('final') }}
           blockReason={draft.editedEntities > 0
             ? `저장하지 않은 테이블 수정 ${draft.editedEntities}건이 있습니다. 'ERD 저장하고 새 버전 만들기'로 만든 새 버전에서 확정하세요.`
-            : myJob?.status === 'running' && myJob.source !== 'review' ? '이 기능 명세로 새 ERD를 만드는 중입니다. 끝난 뒤 새 버전에서 확정하세요.' : undefined} />
+            : running && myJob?.source !== 'review' ? '이 기능 명세로 새 ERD를 만드는 중입니다. 끝난 뒤 새 버전에서 확정하세요.' : undefined} />
       : route.page === 'final'
         ? <FinalView design={design} project={route.project} version={route.version} record={record} finalized={finalized}
-            unsavedEntities={draft.editedEntities} onOpenEntity={(id) => open('erd', id)} onOpenDevSpec={(name) => open('dev-spec', name)}
-            review={reviewJob && [reviewJob.base, reviewJob.new_version].includes(route.version) ? reviewJob : undefined}
-            onReview={startReview} />
+            onOpenEntity={(id) => open('erd', id)} onOpenDevSpec={(name) => open('dev-spec', name)}
+            review={reviewJob && [reviewJob.base, reviewJob.new_version].includes(route.version) ? reviewJob : undefined} />
         : <DocsView page={route.page} design={draft.merged} saved={design} project={route.project} version={route.version}
             versionRecord={record} versions={versions} finalizedAt={finalized.final} focus={route.focus} onOpen={open} />
 
+  // 기능 명세 버튼은 내보내기 전후가 같다: 내보낸 뒤 고친 것도 다시 내보내 최신 ERD에 이어서 반영한다
   const actions = route.page === 'spec' ? (
     <>
       <ResetButton draft={draft} />
-      <Button icon={<FloppyDisk />} onClick={() => { const ok = draft.saveNow(); setSavedNote(ok ? `저장함 ${formatDate(new Date().toISOString()).slice(-5)}` : '저장 실패') }}>저장</Button>
-      {/* 새 답은 내보낼 때 코드로 반영된다. LLM으로 답이 바꾼 기능을 다시 쓰고 싶을 때만 이 버튼 (토큰 사용) */}
-      {answered > 0 && (
-        <Button icon={<ArrowsClockwise />} disabled={myJob?.status === 'running'} onClick={() => setDialog('answers')}
+      <Button icon={<FloppyDisk />} onClick={() => { const ok = draft.saveNow(); setSavedNote(ok ? `임시저장함 ${formatDate(new Date().toISOString()).slice(-5)}` : '저장 실패') }}
+        title="이 브라우저에 지금 편집·체크를 저장합니다 (내보내기 아님)">임시저장</Button>
+      {/* 새 답은 내보낼 때 코드로 반영된다. LLM으로 답이 바꾼 기능을 다시 쓰거나 의견으로 기능 명세 새 버전을 만들 때만 (토큰 사용) */}
+      {answered > 0 ? (
+        <Button icon={<ArrowsClockwise />} disabled={running} onClick={() => setDialog('answers')}
           title="LLM이 답이 바꾼 기능을 다시 설계해 기능 명세 새 버전을 만듭니다 (토큰 사용)">
           답 {answered}건 AI로 반영 → 기능 명세 다시
         </Button>
+      ) : (
+        <Button icon={<ArrowsClockwise />} disabled={running} onClick={() => setDialog('redo')}
+          title="수정·의견으로 기능 명세 새 버전을 만듭니다 (고친 기능은 그대로, 의견이 있을 때만 LLM)">
+          기능 명세 다시 만들기 (새 버전)
+        </Button>
       )}
-      <Button variant="primary" icon={<PaperPlaneTilt />} disabled={myJob?.status === 'running'} onClick={() => setDialog('spec')}>
+      <Button variant={specReady ? 'ok' : 'secondary'} icon={<PaperPlaneTilt />} disabled={!specReady} onClick={() => setDialog('spec')}
+        title={(specSummary?.requiredLeft ?? 1) > 0 ? `필수 확인 항목 ${specSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`
+          : !specChanged ? '마지막으로 내보낸 뒤 고친 것이 없습니다'
+          : erdRecord ? `고친 기능 명세를 새 기능 명세 버전으로 남기고 그 ERD를 만듭니다 (ERD v${targets.erd}를 이어받아 바뀐 기능의 테이블만)`
+          : '기능 명세를 확정하고 이 명세로 ERD를 만듭니다'}>
         내보내기 → ERD 만들기
       </Button>
     </>
   ) : route.page === 'erd' ? (
     <>
-      <ResetButton draft={draft} />
-      <Button variant="primary" icon={<FloppyDisk />} disabled={myJob?.status === 'running'} onClick={() => setDialog('erd')}>ERD 저장하고 새 버전 만들기</Button>
+      {!finalized.erd && <ResetButton draft={draft} />}
+      <Button icon={<FloppyDisk />} disabled={running} onClick={() => setDialog('erd')}>ERD 저장하고 새 버전 만들기</Button>
+      {finalized.erd
+        ? <Button variant="primary" icon={<ArrowRight />} onClick={() => open('final')}>최종 산출물 보기</Button>
+        : <ConfirmErdButton ready={erdReady} left={erdSummary?.requiredLeft ?? 0} unsaved={draft.editedEntities} onConfirm={startReview} />}
     </>
-  ) : route.page === 'final' ? (
-    <FinalizeButton draft={draft} finalized={finalized} />
   ) : null
 
   return (
@@ -189,13 +220,15 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         <SaveVersionDialog
           mode={dialog === 'erd' ? 'erd' : 'spec'}
           aiAnswers={dialog === 'answers'}
+          redo={dialog === 'redo'}
           open
           onClose={() => setDialog(null)}
           draft={draft}
           design={design}
           project={route.project}
           version={route.version}
-          onStarted={(kind) => { if (dialog === 'spec' && kind === 'erd') open('erd') }}
+          // 내보내기를 시작한 순간 기능 명세를 확정한다 (다음 단계로 넘어가므로 취소 없음)
+          onStarted={(kind) => { if (dialog === 'spec' && kind === 'erd') { draft.finalize('spec'); open('erd') } }}
           onFinished={shell.onReloadProjects}
         />
       )}
@@ -204,27 +237,25 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
 }
 
 /**
- * 최종 산출물 화면의 '최종 확정하기': 보고 있는 버전을 최종 산출물로 확정했다고 이 브라우저에 표시한다.
- * 최종본(v<ERD>.1) 자체는 ERD 화면의 'ERD 최종 확정'(POST /projects/review)이 만든다. 앞 단계를 확정하지 않았으면 한 번 더 묻는다.
+ * ERD 화면의 'ERD 최종 확정하기': 필수 항목(의미 검토 지적 처리 포함)을 다 해결하면 초록색으로 켜진다.
+ * 누르면 한 번 더 묻고 최종본(v<ERD>.1)을 만든다 (POST /projects/review). 확정은 취소할 수 없다.
  */
-function FinalizeButton({ draft, finalized }: { draft: Draft; finalized: { spec?: string; erd?: string; final?: string } }) {
+function ConfirmErdButton({ ready, left, unsaved, onConfirm }: { ready: boolean; left: number; unsaved: number; onConfirm: () => void }) {
   const [confirming, setConfirming] = useState(false)
-  if (finalized.final) {
-    return <Button variant="ghost" icon={<LockSimpleOpen />} onClick={() => draft.unfinalize('final')}>최종 확정 취소</Button>
-  }
-  const missing = [!finalized.spec && '기능 명세', !finalized.erd && 'ERD'].filter(Boolean)
   if (confirming) {
     return (
-      <span role="group" aria-label="최종 확정 확인" className="flex items-center gap-1.5 rounded-md border border-warn/40 bg-warn-soft py-1 pr-1 pl-3 text-small text-warn">
-        {missing.join('·')}를 아직 확정하지 않았습니다. 그래도 최종 확정할까요?
-        <Button size="sm" variant="primary" onClick={() => { draft.finalize('final'); setConfirming(false) }}>최종 확정</Button>
+      <span role="group" aria-label="ERD 최종 확정 확인" className="flex items-center gap-1.5 rounded-md border border-ok/40 bg-ok-soft py-1 pr-1 pl-3 text-small text-ok">
+        확정하면 취소할 수 없고 최종본을 만듭니다. 확정할까요?
+        <Button size="sm" variant="ok" onClick={() => { setConfirming(false); onConfirm() }}>확정하기</Button>
         <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>취소</Button>
       </span>
     )
   }
   return (
-    <Button variant="primary" icon={<SealCheck />} onClick={() => (missing.length ? setConfirming(true) : draft.finalize('final'))}>
-      최종 확정하기
+    <Button variant={ready ? 'ok' : 'secondary'} icon={<SealCheck />} disabled={!ready} onClick={() => setConfirming(true)}
+      title={ready ? 'DDL을 검증하고 최종본(ERD·DDL·산출물·개발 스펙)을 만듭니다'
+        : unsaved ? `저장하지 않은 테이블 수정 ${unsaved}건을 먼저 저장하세요` : `필수 확인 항목 ${left}개를 먼저 해결하세요`}>
+      ERD 최종 확정하기
     </Button>
   )
 }

@@ -1,35 +1,32 @@
-import { ArrowsClockwise, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
-import { useEffect, useId, useState } from 'react'
-import { getTechStacks, setTechStack, type Job } from '../../api'
-import { formatDate } from '../../labels'
-import type { Design, VersionRecord } from '../../types'
-import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Loading, TextInput } from '../components/ui'
+import { Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { useEffect, useState } from 'react'
+import type { Job } from '../../api'
+import { formatDate, issueKindLabel } from '../../labels'
+import type { Design, Issue, VersionRecord } from '../../types'
+import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Loading } from '../components/ui'
 import { ZipButton } from '../components/ZipButton'
 import { ARTIFACT_FILES, DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
-import { refreshVersion, useFile } from '../lib/data'
+import { useFile } from '../lib/data'
 import { relationsOf } from '../lib/erd'
-import { remarkKey, useSemanticChecks, useSemanticReview } from '../lib/semantic'
 import { FullErd } from './Erd'
 
-// 최종 산출물: 이 버전에 저장된 결과 (화면에서 고치고 저장하지 않은 내용은 들어가지 않는다)
-export function FinalView({ design, project, version, record, finalized, unsavedEntities, onOpenEntity, onOpenDevSpec, review, onReview }: {
+// 최종 산출물: 최종본(v<ERD>.1)에 저장된 결과를 보여주기만 한다 (고치는 단계가 아님 — 바꾸려면 ERD 화면에서 새 버전)
+export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review }: {
   design: Design
   project: string
   version: string
   record?: VersionRecord
   finalized: { spec?: string; erd?: string; final?: string }
-  unsavedEntities: number
   onOpenEntity: (id: string) => void
   /** 산출물 보기 → 개발 스펙 탭의 그 문서 */
   onOpenDevSpec: (name: string) => void
-  /** 이 버전의 의미 검토 작업 (ERD 최종 확정 때 시작) */
+  /** 진행 중인 ERD 최종 확정 작업 */
   review?: Job
-  onReview: () => void
 }) {
-  // 최종본은 확정한 ERD 아래 번호(v2.1 → v2.1.1). 백엔드 최종 단계가 생기기 전에는 ERD 버전을 미리 보기로 보여준다
-  const isFinal = version.split('.').length === 3
-  const ready = Boolean(finalized.spec && finalized.erd)
+  // 최종본은 확정한 ERD 아래 번호(v2.1 → v2.1.1). 아직 없으면 ERD 버전을 미리 보기로 보여준다
+  const isFinal = record?.stage === 'final' || version.split('.').length === 3
   const { entities } = design.data_model
+  const remarks = design.issues.filter((i) => i.kind.startsWith('SEM_'))
   return (
     <div className="space-y-4">
       <Card aria-labelledby="final-title">
@@ -38,11 +35,7 @@ export function FinalView({ design, project, version, record, finalized, unsaved
           eyebrow={isFinal ? `Deliverables · v${version}` : `Deliverables · ERD v${version} 기준 미리 보기`}
           title={record?.title ? `최종 산출물 · ${record.title}` : '최종 산출물'}
           titleId="final-title"
-          actions={finalized.final
-            ? <FinalBadge at={finalized.final} />
-            : ready
-              ? <Badge tone="info">기능 명세·ERD 확정 · 최종 확정 전</Badge>
-              : <Badge tone="warn">확정 전 미리 보기</Badge>}
+          actions={isFinal && finalized.final ? <FinalBadge at={finalized.final} /> : <Badge tone="warn">최종 확정 전 미리 보기</Badge>}
         >
           <p className="mt-1 text-label text-fg-3">
             요구사항 {fmt(design.requirements.length)} · 기능 {fmt(design.functions.length)} · 테이블 {fmt(entities.length)} · 관계 {fmt(relationsOf(entities).length)}
@@ -50,35 +43,27 @@ export function FinalView({ design, project, version, record, finalized, unsaved
           </p>
         </CardHeader>
         <div className="space-y-2 px-5 pb-5">
+          {review?.status === 'running' && (
+            <p className="flex items-start gap-2 rounded-md bg-info-soft px-3 py-2 text-small text-info">
+              <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />{review.message}
+            </p>
+          )}
           {!isFinal && (
             <p className="flex items-start gap-2 rounded-md bg-sunken px-3 py-2 text-small text-fg-2">
               <WarningCircle size={16} className="mt-0.5 shrink-0 text-fg-3" aria-hidden="true" />
-              ERD를 최종 확정하면 최종본 v{version}.1이 만들어집니다 (산출물은 이 ERD 그대로, 추적·의미 검토 추가). 지금은 ERD v{version}의 결과를 미리 보여줍니다.
-            </p>
-          )}
-          {!ready && !finalized.final && (
-            <p className="flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-small text-warn">
-              <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-              {!finalized.spec && !finalized.erd ? '기능 명세와 ERD를' : !finalized.spec ? '기능 명세를' : 'ERD를'} 아직 확정하지 않았습니다. 확정하기 전의 결과입니다.
-            </p>
-          )}
-          {unsavedEntities > 0 && (
-            <p className="flex items-start gap-2 rounded-md bg-info-soft px-3 py-2 text-small text-info">
-              <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-              ERD 화면에서 저장하지 않은 테이블 수정 {unsavedEntities}건은 여기에 들어가지 않습니다. 'ERD 저장하고 새 버전 만들기'를 하면 새 버전의 산출물에 반영됩니다.
+              ERD 화면에서 필수 항목을 모두 처리하고 'ERD 최종 확정하기'를 누르면 최종본 v{version}.1이 만들어집니다. 지금은 ERD v{version}의 결과를 미리 보여줍니다.
             </p>
           )}
           <dl className="grid gap-3 pt-2 sm:grid-cols-3">
             <Summary term="DB 검증" value={record?.db_validation ? (record.db_validation === 'PASSED' ? '통과' : '실패') : '하지 않음'}
               tone={record?.db_validation === 'PASSED' ? 'ok' : record?.db_validation ? 'danger' : undefined} />
             <Summary term="Agent 완료 조건" value={`${design.completion.checks.filter((c) => c.passed).length}/${design.completion.checks.length}`} />
-            <Summary term="열린 검토 지적" value={`${design.issues.filter((i) => i.status !== 'RESOLVED').length}건`} />
+            <Summary term="의미 검토 지적" value={`${remarks.length}건`} />
           </dl>
         </div>
       </Card>
 
-      <SemanticReviewCard project={project} version={version} hasErd={entities.length > 0} erdFinalized={Boolean(finalized.erd)}
-        review={review} onReview={onReview} />
+      <RemarksCard remarks={remarks} isFinal={isFinal} onOpen={onOpenEntity} entities={new Set(entities.map((e) => e.entity_id))} />
 
       <FinalErdCard design={design} version={version} onOpenEntity={onOpenEntity} />
 
@@ -125,85 +110,47 @@ export function FinalErdCard({ design, version, onOpenEntity }: { design: Design
   )
 }
 
-/** 의미 검토 미리 보기: ERD 최종 확정 때 한 번 돌린 결과 (semantic_review.json). 자동으로 고치지 않는 보고용 */
-function SemanticReviewCard({ project, version, hasErd, erdFinalized, review, onReview }: {
-  project: string
-  version: string
-  hasErd: boolean
-  erdFinalized: boolean
-  review?: Job
-  onReview: () => void
-}) {
-  const running = review?.status === 'running'
-  // 검토 작업이 끝나면 다시 읽는다
-  const result = useSemanticReview(project, version, true, review?.finished_at)
-  const { checked, toggle } = useSemanticChecks(project, version)
-  const remarks = result?.remarks ?? []
-  const done = remarks.filter((r, i) => checked[remarkKey(r, i)]).length
+const RESOLUTION_TONE = (i: Issue) => (!i.resolution ? 'warn' : i.status === 'UNRESOLVED' ? 'warn' : 'ok') as 'warn' | 'ok'
+
+/**
+ * 의미 검토 지적과 처리: ERD를 만들 때 의미 검토 Agent가 낸 지적(데이터 모델 Agent가 한 번 고친 뒤 남은 것)과
+ * 사람이 ERD 화면에서 정한 처리(반영함·문제 아님·미해결로 둠). 보기만 한다.
+ */
+function RemarksCard({ remarks, isFinal, onOpen, entities }: { remarks: Issue[]; isFinal: boolean; onOpen: (id: string) => void; entities: Set<string> }) {
   return (
     <Card aria-labelledby="final-semantic">
-      <CardHeader
-        eyebrow="Semantic review"
-        title="의미 검토 (ERD ↔ 기능 명세)"
-        titleId="final-semantic"
-        actions={result && !running && (
-          <>
-            <Button size="sm" variant="ghost" icon={<ArrowsClockwise />} onClick={onReview}>다시 검토</Button>
-            <a href={fileUrl(project, version, 'semantic_review.md')} download={`semantic_review.v${version}.md`}
-              className="inline-flex min-h-8 items-center gap-1.5 rounded-sm border border-line-strong bg-card px-2.5 text-small font-semibold hover:border-control hover:bg-sunken">
-              <DownloadSimple size={16} aria-hidden="true" />받기
-            </a>
-          </>
-        )}
-      >
+      <CardHeader eyebrow="Semantic review" title="의미 검토 지적과 처리" titleId="final-semantic">
         <p className="mt-1 text-small text-fg-3">
-          {result
-            ? `${formatDate(result.reviewed_at)} 검토 · ${result.scope} · LLM 호출 ${fmt(result.usage.calls ?? 0)}회 · `
-              + `입력 ${fmt(result.usage.input_tokens ?? 0)} / 출력 ${fmt(result.usage.output_tokens ?? 0)} 토큰. AI 지적이므로 담당자가 확인해 반영 여부를 정합니다.`
-            : 'ERD를 최종 확정하면 최종본을 만들면서 확정한 ERD를 기능 명세와 대조해 빠진 데이터·제약을 한 번 검토합니다.'}
+          ERD를 만들 때 의미 검토 Agent가 ERD를 기능 명세와 대조해 낸 지적입니다. 데이터 지적은 데이터 모델 Agent가 한 번 고쳤고,
+          남은 지적은 ERD 화면에서 사람이 처리를 정했습니다{isFinal ? '' : ' (최종 확정 전이라 처리가 아직 남지 않았습니다)'}.
         </p>
       </CardHeader>
       <div className="px-5 pb-5">
-        {running && <Loading label="의미 검토 중" lines={3} />}
-        {!running && result === undefined && <Loading label="의미 검토 결과를 확인하는 중" lines={2} />}
-        {!running && result === null && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-sunken px-3 py-2.5 text-small text-fg-2">
-            <span>{!hasErd ? '이 버전에는 ERD가 없어 의미 검토를 할 수 없습니다.'
-              : erdFinalized ? `아직 최종본이 없습니다. 최종본 v${version}.1을 만들고 검토할 수 있습니다.`
-              : `ERD 화면의 '확인 필요' 탭에서 'ERD 최종 확정'을 누르면 최종본 v${version}.1을 만들고 검토합니다.`}</span>
-            {hasErd && erdFinalized && <Button size="sm" onClick={onReview}>최종본 만들기</Button>}
-          </div>
-        )}
-        {!running && result && (
-          <>
-            {result.failed.length > 0 && (
-              <p className="mb-3 flex items-start gap-2 rounded-md bg-warn-soft px-3 py-2 text-small text-warn">
-                <WarningCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />검토 실패(미검증): {result.failed.join(', ')}
-              </p>
-            )}
-            {remarks.length === 0
-              ? <p className="flex items-center gap-2 text-small text-ok"><SealCheck size={16} weight="fill" aria-hidden="true" />지적 없음</p>
-              : (
-                <ul className="space-y-2">
-                  <li className="text-small text-fg-3">확인한 지적 <strong className="font-semibold text-fg tabular-nums">{done}/{remarks.length}</strong> · 반영 여부를 정한 지적은 '확인함'으로 표시하세요.</li>
-                  {remarks.map((r, i) => (
-                    <li key={remarkKey(r, i)} className={cx('rounded-lg border border-line px-3 py-2.5', checked[remarkKey(r, i)] && 'opacity-60')}>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="flex flex-wrap items-center gap-1.5 text-small">
-                          <Badge tone={checked[remarkKey(r, i)] ? 'ok' : 'warn'}>{r.label}</Badge>
-                          <span className="font-mono text-micro text-fg-3">{r.target}</span>
-                        </p>
-                        <Checkbox checked={Boolean(checked[remarkKey(r, i)])} onChange={() => toggle(remarkKey(r, i))} label="확인함" />
-                      </div>
-                      <p className="mt-1 text-label">{r.message}</p>
-                      {r.evidence && <p className="mt-1 text-small text-fg-3">근거: {r.evidence}</p>}
-                      {r.suggestion && <p className="mt-0.5 text-small text-fg-2">제안: {r.suggestion}</p>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-          </>
-        )}
+        {remarks.length === 0
+          ? <p className="flex items-center gap-2 text-small text-ok"><SealCheck size={16} weight="fill" aria-hidden="true" />남은 지적 없음</p>
+          : (
+            <ul className="space-y-2">
+              {remarks.map((i) => {
+                const [what, ...rest] = i.message.split('\n')
+                const target = i.target_id.split(/\s*,\s*/).find((t) => entities.has(t))
+                return (
+                  <li key={i.issue_id} className="rounded-lg border border-line px-3 py-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="flex flex-wrap items-center gap-1.5 text-small">
+                        <Badge tone="neutral">{issueKindLabel(i.kind)}</Badge>
+                        {target
+                          ? <button type="button" onClick={() => onOpen(target)} className="font-mono text-micro text-fg-3 underline underline-offset-4 hover:text-fg">{i.target_id}</button>
+                          : <span className="font-mono text-micro text-fg-3">{i.target_id}</span>}
+                      </p>
+                      <Badge tone={RESOLUTION_TONE(i)}>{i.resolution || (i.status === 'RESOLVED' ? '해결됨' : '처리 전')}</Badge>
+                    </div>
+                    <p className="mt-1 text-label">{what}</p>
+                    {rest.map((line, n) => <p key={n} className="mt-0.5 text-small text-fg-3">{line}</p>)}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
       </div>
     </Card>
   )
@@ -281,7 +228,12 @@ function DevSpecFilesCard({ design, project, version, onOpen }: {
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
-      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} />}
+      {meta && (
+        <p className={cx('mx-5 mb-3 rounded-md px-3 py-2 text-small', meta.stack_basis === '가정' ? 'bg-warn-soft text-warn' : 'bg-sunken')}>
+          기술 스택: <strong>{meta.stack}</strong> ({meta.stack_basis === '원문' ? '원문에 정해짐' : meta.stack_basis === '가정'
+            ? "추천안으로 가정 — 기능 명세 화면의 기술 스택 질문(TQ-001)에 답하고 새 버전으로 다시 만들면 바뀝니다" : '기능 명세에서 정함'})
+        </p>
+      )}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
           {DEV_SPEC_FILES.map((d, i) => (
@@ -304,84 +256,6 @@ function DevSpecFilesCard({ design, project, version, onOpen }: {
         </ol>
       )}
     </Card>
-  )
-}
-
-/**
- * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고
- * design.json(TQ-001 답)·버전 기록(tech_stack)에 남긴다. 원문이 정한 스택은 바꾸지 않는다.
- */
-function StackPicker({ project, version, stack, basis }: { project: string; version: string; stack: string; basis: string }) {
-  const ids = { group: useId(), custom: useId() }
-  const [choices, setChoices] = useState<{ stack: string; note: string }[] | null>(null)
-  const [editing, setEditing] = useState(basis !== '확정')
-  const [picked, setPicked] = useState(stack)
-  const [custom, setCustom] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => { if (basis !== '원문') getTechStacks().then(setChoices).catch(() => setChoices([])) }, [basis])
-  useEffect(() => { setEditing(basis !== '확정'); setPicked(stack) }, [stack, basis])
-  // 직접 적어 확정한 스택은 '직접 입력' 칸에 채워 둔다
-  useEffect(() => { if (choices && !choices.some((c) => c.stack === stack)) setCustom(stack) }, [choices, stack])
-
-  if (basis === '원문') {
-    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> (원문에 정해짐)</p>
-  }
-  const isCustom = picked === '' || !(choices ?? []).some((c) => c.stack === picked)
-  const value = (isCustom ? custom : picked).trim()
-  const save = async () => {
-    setSaving(true)
-    setError('')
-    try {
-      await setTechStack(project, version, value)
-      refreshVersion(project, version)   // 개발 스펙 문서·design.json을 다시 읽는다
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-  if (!editing) {
-    return (
-      <div className="mx-5 mb-3 flex flex-wrap items-center gap-2 rounded-md bg-ok-soft px-3 py-2 text-small">
-        <SealCheck size={16} className="text-ok" aria-hidden="true" />
-        <span className="min-w-0 flex-1">기술 스택: <strong>{stack}</strong> (확정 — 개발 스펙 문서에 이 값이 들어 있습니다)</span>
-        <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>바꾸기</Button>
-      </div>
-    )
-  }
-  return (
-    <fieldset aria-labelledby={ids.group} className="mx-5 mb-3 space-y-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-3 text-small">
-      <legend id={ids.group} className="sr-only">기술 스택 정하기</legend>
-      <p className="text-warn">
-        {basis === '가정'
-          ? <>원문에 개발 언어·프레임워크가 없어 추천안(<strong>{stack}</strong>)을 가정으로 썼습니다. 개발에 쓸 스택을 골라 확정하세요 (LLM 사용 없음).</>
-          : '개발에 쓸 기술 스택을 고르세요 (LLM 사용 없음).'}
-      </p>
-      {choices === null ? <Loading label="선택지를 불러오는 중" lines={2} /> : (
-        <div className="space-y-1.5">
-          {choices.map((c, i) => (
-            <label key={c.stack} className="flex cursor-pointer items-start gap-2 rounded-md bg-card px-2.5 py-1.5">
-              <input type="radio" name={ids.group} className="mt-1" checked={picked === c.stack} onChange={() => setPicked(c.stack)} />
-              <span><strong>{c.stack}</strong>{i === 0 && <Badge tone="info" className="ml-1.5">추천</Badge>}<span className="block text-micro text-fg-3">{c.note}</span></span>
-            </label>
-          ))}
-          <label className="flex cursor-pointer items-center gap-2 rounded-md bg-card px-2.5 py-1.5">
-            <input type="radio" name={ids.group} checked={isCustom} onChange={() => setPicked('')} />
-            <span className="shrink-0">직접 입력</span>
-            <TextInput id={ids.custom} dense value={custom} maxLength={200} placeholder="예: Go 1.23 · Gin · PostgreSQL 16"
-              aria-label="기술 스택 직접 입력" onFocus={() => setPicked('')} onChange={(e) => setCustom(e.target.value)} />
-          </label>
-        </div>
-      )}
-      {error && <p role="alert" className="text-danger">{error}</p>}
-      <div className="flex justify-end gap-2">
-        {basis === '확정' && <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
-        <Button size="sm" variant="primary" icon={<SealCheck />} disabled={!value || saving || (basis === '확정' && value === stack)} onClick={() => void save()}>
-          {saving ? '문서 다시 쓰는 중…' : '이 스택으로 확정'}
-        </Button>
-      </div>
-    </fieldset>
   )
 }
 

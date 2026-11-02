@@ -106,6 +106,7 @@ export interface Issue {
   status: 'OPEN' | 'RESOLVED' | 'UNRESOLVED'
   attempts: number
   raised_by: string
+  resolution?: string   // 사람이 ERD 화면에서 정한 처리 (반영함 / 문제 아님 / 미해결로 둠: 메모)
 }
 
 export interface TraceLink {

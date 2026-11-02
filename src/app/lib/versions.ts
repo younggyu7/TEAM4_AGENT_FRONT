@@ -6,8 +6,9 @@ import type { StagePage } from './route'
 //   v1.2    그 기능 명세로 만든 ERD (같은 기능 명세에서 다시 만들면 v1.1, v1.2 …)
 //   v1.2.1  그 ERD로 확정한 최종 산출물
 // 예전 전체 실행(v1~v4)은 기능 명세와 ERD를 함께 만들었으므로 v1 안에도 ERD 초안이 들어 있다.
-// 기능 명세를 다시 만든 버전(확인 질문 답 반영, versions.json의 stage = function_designer)은 기준 아래 번호(v1.3)지만
-// 그 계보의 기능 명세다: 그 아래가 ERD(v1.3.1), 그 아래가 최종(v1.3.1.1).
+// 기능 명세를 다시 만든 버전(답 AI로 반영·다시 만들기·내보낸 뒤 고쳐 다시 내보내기, stage = function_designer)은
+// 다음 최상위 번호(v2)를 받는다: 그 아래가 ERD(v2.1), 그 아래가 최종(v2.1.1).
+// 예전 버전에는 기준 아래 번호(v1.3)인 기능 명세도 있다: 그 아래가 ERD(v1.3.1), 그 아래가 최종(v1.3.1.1).
 
 export const STAGE_OF_DEPTH: StagePage[] = ['spec', 'erd', 'final']
 const SPEC_STAGE = 'function_designer'

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { DispositionChoice, Dispositions } from '../../api'
 import type { Attribute, Design, Entity, FunctionSpec } from '../../types'
 import { listStoreKeys, readStore, removeStore, writeStore } from './storage'
 
@@ -10,6 +11,7 @@ export interface DraftState {
   entities: Record<string, Entity>          // 바뀐 테이블 (entity_id → 수정본)
   answers: Record<string, string>           // 확인 질문 답 (question_id → 답)
   checked: Record<string, boolean>          // 사람이 '확인함'으로 표시한 검토 항목
+  dispositions?: Dispositions               // ERD 화면: 의미 검토 지적 처리 (이슈 ID → 반영함·문제 아님·미해결로 둠)
   finalized?: { page: ConfirmStage; at: string }[]
   updatedAt?: string
 }
@@ -109,16 +111,24 @@ export function useDraft(design: Design, project: string, version: string) {
     update((s) => ({ ...s, checked: { ...s.checked, [itemId]: value } }))
   }, [update])
 
-  const finalize = useCallback((page: ConfirmStage) => {
-    update((s) => ({
-      ...s,
-      finalized: [...(s.finalized ?? []).filter((f) => f.page !== page), { page, at: new Date().toISOString() }],
-    }))
+  const setDisposition = useCallback((issueId: string, choice: DispositionChoice | null, note?: string) => {
+    update((s) => {
+      const { [issueId]: current, ...rest } = s.dispositions ?? {}
+      if (!choice) return { ...s, dispositions: rest }
+      return { ...s, dispositions: { ...rest, [issueId]: { choice, note: note ?? current?.note ?? '' } } }
+    })
   }, [update])
 
-  const unfinalize = useCallback((page: ConfirmStage) => {
-    update((s) => ({ ...s, finalized: (s.finalized ?? []).filter((f) => f.page !== page) }))
-  }, [update])
+  // 확정은 누르자마자 다른 버전 화면으로 넘어가므로(이 화면이 사라져 지연 저장이 취소됨) 바로 쓴다.
+  // updatedAt을 확정 시각과 같게 두어 '확정(내보내기) 뒤 고친 것'을 updatedAt > at으로 알 수 있게 한다
+  const finalize = useCallback((page: ConfirmStage) => {
+    const at = new Date().toISOString()
+    setState((s) => {
+      const next = { ...s, finalized: [...(s.finalized ?? []).filter((f) => f.page !== page), { page, at }], updatedAt: at }
+      writeStore(key, next)
+      return next
+    })
+  }, [key])
 
   /** '저장' 버튼: 기다리지 않고 바로 쓴다 (백엔드가 생기면 서버 초안 저장으로 바꾼다) */
   const saveNow = useCallback((): boolean => {
@@ -166,8 +176,8 @@ export function useDraft(design: Design, project: string, version: string) {
     clearEntityEdits,
     setAnswer,
     setChecked,
+    setDisposition,
     finalize,
-    unfinalize,
     reset,
   }
 }

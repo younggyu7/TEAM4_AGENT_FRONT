@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { createVersion, getJob, startReview, startRun, type Job } from '../../api'
+import { createVersion, getJob, startReview, startRun, type Dispositions, type Job } from '../../api'
 
 // 새 버전 만들기 작업 상태. Agent 실행은 몇 분 걸리므로 화면을 옮겨도 진행 상황이 남도록 모듈에 둔다.
 // 백엔드 서버를 다시 띄우면 서버 쪽 작업 기록이 사라지므로 여기 상태도 새로고침하면 비운다.
@@ -36,9 +36,9 @@ export async function startJob(
   track(await createVersion(body), onFinish)
 }
 
-/** ERD 최종 확정 → 의미 검토 1회 (새 버전 없이 그 버전 폴더에 결과) */
-export async function startReviewJob(project: string, version: string, onFinish: (job: Job) => void): Promise<void> {
-  track(await startReview(project, version), onFinish)
+/** ERD 최종 확정 → 최종본 v<ERD>.1 (지적 처리를 남기고 DDL 검증·추적 검토·API 설계) */
+export async function startReviewJob(project: string, version: string, dispositions: Dispositions, onFinish: (job: Job) => void): Promise<void> {
+  track(await startReview(project, version, dispositions), onFinish)
 }
 
 /** 원본 요구서 업로드 → 기능 명세 초안까지 실행. 작업은 프로젝트 ID(업로드한 프로젝트 이름)로 기록한다. */

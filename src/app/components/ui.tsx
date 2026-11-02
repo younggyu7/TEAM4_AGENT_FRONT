@@ -6,10 +6,12 @@ export function cx(...classes: (string | false | null | undefined)[]) {
 }
 
 /* ------------------------------------------------------------ 버튼 */
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'ok'
 
 const VARIANT: Record<Variant, string> = {
   primary: 'bg-primary text-on-primary hover:opacity-85',
+  // 단계 확정 버튼: 필수 항목을 다 해결하면 초록색으로 켜진다 (on-primary는 밝은 테마 흰색·어두운 테마 검정)
+  ok: 'bg-ok text-on-primary hover:opacity-85',
   secondary: 'bg-card text-fg border border-line-strong hover:border-control hover:bg-sunken',
   ghost: 'text-fg-2 hover:bg-sunken hover:text-fg',
   danger: 'text-danger border border-line-strong bg-card hover:bg-danger-soft hover:border-danger',

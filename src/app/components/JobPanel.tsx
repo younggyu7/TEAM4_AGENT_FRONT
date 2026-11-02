@@ -5,7 +5,7 @@ import { clearJob } from '../lib/jobs'
 import { Button, Card, cx, IconButton } from './ui'
 
 /** 진행 상황: 문서 업로드(홈), 기능 명세 내보내기·ERD 저장(ERD 화면 위), 확인 질문 답 반영(기능 명세 화면 위),
- * ERD 최종 확정 의미 검토(ERD·최종 산출물 화면 위) 작업이 도는 동안과 끝난 뒤 결과 */
+ * ERD 최종 확정(ERD·최종 산출물 화면 위) 작업이 도는 동안과 끝난 뒤 결과 */
 export function JobPanel({ job, project, onOpen, current }: {
   job: Job
   project: string
@@ -43,10 +43,10 @@ export function JobPanel({ job, project, onOpen, current }: {
               {elapsed}초 경과 · {job.source === 'run'
                 ? 'Agent가 문서 분석 → 요구사항 추출·검토 → 기능 명세 초안까지 만듭니다 (문서 크기에 따라 수 분~수십 분). 확인 질문은 추천안으로 가정하고, 끝나면 화면에서 확인·수정한 뒤 ERD를 만듭니다.'
                 : job.source === 'review'
-                ? '확정한 ERD로 최종본을 만들고, 추적 검토(코드) → API 설계(바뀐 기능만, 개발 스펙 문서 9개) → 의미 검토(ERD ↔ 기능 명세, LLM 1회)를 합니다 (보통 1~3분). 끝나면 최종본이 열립니다.'
+                ? '확정한 ERD로 최종본을 만듭니다: 지적 처리 기록 → DDL 검증·추적 검토(코드) → API 설계(바뀐 기능만, 개발 스펙 문서 9개). DDL에 오류가 있으면 최종본을 만들지 않습니다. 끝나면 최종본이 열립니다.'
                 : job.source === 'answers'
                 ? 'Agent가 답을 반영하고(분류·결정), 충돌을 다시 확인한 뒤 바뀐 기능만 다시 설계합니다. 끝나면 새 기능 명세 버전이 열립니다.'
-                : 'Agent가 데이터 설계·검증·DDL을 만듭니다. 다른 화면으로 가도 계속 실행되고, 끝나면 새 ERD 버전이 열립니다.'}
+                : 'Agent가 데이터 설계·검증·DDL을 만들고, 의미 검토로 빠진 데이터를 찾아 한 번 고칩니다 (사람이 고친 ERD만 저장하면 다시 검토하지 않음). 다른 화면으로 가도 계속 실행되고, 끝나면 새 ERD 버전이 열립니다.'}
             </p>
           )}
         </div>

@@ -1,31 +1,32 @@
-import { ArrowRight, CheckCircle, LockSimple, LockSimpleOpen, MagicWand, Wrench } from '@phosphor-icons/react'
+import { ArrowRight, CheckCircle, LockSimple, MagicWand, Wrench } from '@phosphor-icons/react'
 import { useId, useMemo, useState } from 'react'
+import type { DispositionChoice } from '../../api'
 import { formatDate } from '../../labels'
 import type { Draft } from '../lib/draft'
-import { KIND_LABEL, summarize, type ReviewItem, type ReviewKind } from '../lib/review'
+import { KIND_LABEL, remarkDisposition, summarize, type ReviewItem, type ReviewKind } from '../lib/review'
 import { Badge, Button, Checkbox, cx, Empty, fmt, Segmented, TextInput } from './ui'
 
 type Filter = 'all' | 'required' | ReviewKind
 const PAGE = 40
 
-/** 확정 전에 사람이 결정할 항목 목록 + 맨 아래 '최종 확정' 막대 */
-export function ReviewPanel({ items, draft, onJump, finalizedAt, onFinalize, onUnfinalize, subject, nextAction, blockReason }: {
+/**
+ * 확정 전에 사람이 결정할 항목 목록 + 맨 아래 상태 막대.
+ * 확정 버튼은 오른쪽 위에만 둔다 (기능 명세: '내보내기 → ERD 만들기', ERD: 'ERD 최종 확정하기'). 필수를 다 해결하면 초록색으로 켜진다.
+ */
+export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockReason, action }: {
   items: ReviewItem[]
   draft: Draft
   onJump: (targetId: string) => void
   finalizedAt?: string
-  onFinalize: () => void
-  onUnfinalize: () => void
   subject: string
-  /** 확정한 뒤 보여 줄 다음 단계 버튼 (예: 'ERD 단계로') */
-  nextAction?: { label: string; onClick: () => void }
   /** 필수 항목과 별개로 확정을 막는 이유 (예: 저장 안 한 ERD 수정) */
   blockReason?: string
+  /** 오른쪽 위 확정 버튼 이름 (안내 문구용) */
+  action: string
 }) {
   const [filter, setFilter] = useState<Filter>('required')
   const [onlyOpen, setOnlyOpen] = useState(true)
   const [limit, setLimit] = useState(PAGE)
-  const reasonId = useId()
 
   const counts = useMemo(() => {
     const open = (pred: (i: ReviewItem) => boolean) => items.filter((i) => pred(i) && (!onlyOpen || !i.resolved)).length
@@ -37,6 +38,7 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, onFinalize, onU
       unconfirmed: open((i) => i.kind === 'unconfirmed'),
       assumption: open((i) => i.kind === 'assumption'),
       issue: open((i) => i.kind === 'issue'),
+      remark: open((i) => i.kind === 'remark'),
       check: open((i) => i.kind === 'check'),
     }
   }, [items, onlyOpen])
@@ -68,6 +70,7 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, onFinalize, onU
             { value: 'unconfirmed', label: KIND_LABEL.unconfirmed, count: counts.unconfirmed },
             { value: 'assumption', label: KIND_LABEL.assumption, count: counts.assumption },
             { value: 'issue', label: KIND_LABEL.issue, count: counts.issue },
+            { value: 'remark', label: KIND_LABEL.remark, count: counts.remark },
             { value: 'check', label: KIND_LABEL.check, count: counts.check },
           ]}
         />
@@ -100,28 +103,22 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, onFinalize, onU
         </div>
       )}
 
-      {/* 최종 확정 막대: 목록을 내려도 보이도록 카드 아래에 붙는다 */}
-      <div className="sticky bottom-0 mt-auto flex flex-wrap items-center justify-between gap-3 rounded-b-lg border-t border-line bg-card px-5 py-3">
-        <div className="text-small" id={reasonId}>
-          {finalizedAt ? (
-            <p className="flex items-center gap-1.5 text-ok"><CheckCircle size={16} weight="fill" aria-hidden="true" />{subject} 확정 완료 · {formatDate(finalizedAt)}</p>
-          ) : blockReason ? (
-            <p className="text-warn">{blockReason}</p>
-          ) : s.requiredLeft > 0 ? (
-            <p className="text-fg-2">필수 항목 <strong className="font-semibold text-warn tabular-nums">{s.requiredLeft}개</strong>를 해결해야 확정할 수 있습니다.</p>
-          ) : (
-            <p className="text-fg-2">필수 항목을 모두 해결했습니다.{recommendedLeft > 0 && <span className="text-fg-3"> 권장 항목 {fmt(recommendedLeft)}개는 남아 있어도 확정할 수 있습니다.</span>}</p>
-          )}
-        </div>
-        {finalizedAt ? (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="ghost" icon={<LockSimpleOpen />} onClick={onUnfinalize}>확정 취소</Button>
-            {nextAction && <Button variant="primary" icon={<ArrowRight />} onClick={nextAction.onClick}>{nextAction.label}</Button>}
-          </div>
+      {/* 상태 막대: 목록을 내려도 보이도록 카드 아래에 붙는다 (확정 버튼은 오른쪽 위) */}
+      <div className="sticky bottom-0 mt-auto rounded-b-lg border-t border-line bg-card px-5 py-3 text-small" aria-live="polite">
+        {finalizedAt && !blockReason ? (
+          <p className="flex flex-wrap items-center gap-1.5 text-ok">
+            <LockSimple size={16} weight="fill" aria-hidden="true" />{subject} 확정 완료 · {formatDate(finalizedAt)}
+            <span className="text-fg-3">— 다음 단계로 넘어가 취소할 수 없습니다. 바꾸려면 오른쪽 위에서 새 버전을 만드세요.</span>
+          </p>
+        ) : blockReason ? (
+          <p className="text-warn">{blockReason}</p>
+        ) : s.requiredLeft > 0 ? (
+          <p className="text-fg-2">필수 항목 <strong className="font-semibold text-warn tabular-nums">{s.requiredLeft}개</strong>를 해결하면 오른쪽 위 '{action}'이 켜집니다.</p>
         ) : (
-          <Button variant="primary" icon={<LockSimple />} disabled={s.requiredLeft > 0 || Boolean(blockReason)} aria-describedby={reasonId} onClick={onFinalize}>
-            {subject} 최종 확정
-          </Button>
+          <p className="flex flex-wrap items-center gap-1.5 text-ok">
+            <CheckCircle size={16} weight="fill" aria-hidden="true" />필수 항목을 모두 해결했습니다. 오른쪽 위 '{action}'을 누르세요.
+            {recommendedLeft > 0 && <span className="text-fg-3">권장 항목 {fmt(recommendedLeft)}개는 남아 있어도 됩니다.</span>}
+          </p>
         )}
       </div>
     </div>
@@ -156,10 +153,11 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
           </button>
         )}
         {item.question && <QuestionAnswer item={item} draft={draft} />}
+        {item.kind === 'remark' && <RemarkDisposition item={item} draft={draft} />}
       </div>
 
       <div className="sm:pt-6">
-        {item.auto ? (
+        {item.kind === 'remark' ? null : item.auto ? (
           <span className="inline-flex items-center gap-1.5 text-small text-fg-3"><Wrench size={14} aria-hidden="true" />고치면 저절로 해결</span>
         ) : !item.question && (
           <Checkbox
@@ -171,6 +169,54 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
         )}
       </div>
     </li>
+  )
+}
+
+const CHOICES: { value: DispositionChoice; label: string; hint: string }[] = [
+  { value: 'applied', label: '반영함', hint: "ERD를 고쳐 반영했습니다 (테이블을 고친 뒤 'ERD 저장하고 새 버전 만들기')" },
+  { value: 'not_issue', label: '문제 아님', hint: '지금 설계가 맞습니다' },
+  { value: 'later', label: '미해결로 둠', hint: '고객 확인 등으로 나중에 정합니다' },
+]
+
+/** 의미 검토 지적 처리: 셋 중 하나를 반드시 고른다 (메모는 선택). ERD 저장·최종 확정 때 서버에 남는다 */
+function RemarkDisposition({ item, draft }: { item: ReviewItem; draft: Draft }) {
+  const issue = item.issue!
+  const current = draft.state.dispositions?.[issue.issue_id]
+  const kept = !current && remarkDisposition(issue, draft.state) === 'kept'
+  const noteId = useId()
+  return (
+    <fieldset className="mt-3">
+      <legend className="mb-1.5 text-micro text-fg-3">
+        처리{kept && ` — 이전 ERD 버전에서 정함: ${issue.resolution} (바꾸려면 다시 고르세요)`}
+      </legend>
+      <div className="flex flex-wrap gap-1.5">
+        {CHOICES.map((c) => {
+          const chosen = current?.choice === c.value
+          return (
+            <button
+              key={c.value}
+              type="button"
+              aria-pressed={chosen}
+              title={c.hint}
+              onClick={() => draft.setDisposition(issue.issue_id, chosen ? null : c.value)}
+              className={cx(
+                'min-h-8 rounded-sm border px-2.5 text-small transition-colors duration-150',
+                chosen ? 'border-fg bg-primary text-on-primary' : 'border-line-strong bg-card text-fg-2 hover:border-control hover:text-fg',
+              )}
+            >
+              {c.label}
+            </button>
+          )
+        })}
+      </div>
+      {current && (
+        <>
+          <label htmlFor={noteId} className="mt-2 block text-micro text-fg-3">메모 (선택)</label>
+          <TextInput id={noteId} dense className="mt-1 max-w-xl" placeholder="예: 임시저장·제출 두 경로라 정상"
+            value={current.note} onChange={(e) => draft.setDisposition(issue.issue_id, current.choice, e.target.value)} />
+        </>
+      )}
+    </fieldset>
   )
 }
 

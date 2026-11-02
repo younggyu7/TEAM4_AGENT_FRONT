@@ -4,7 +4,6 @@ import { setVersionTitle } from '../../api'
 import { formatDate } from '../../labels'
 import type { Design, Project } from '../../types'
 import { useUsages, type Load, type VersionUsage } from '../lib/data'
-import { remarkKey, useSemanticChecks, useSemanticReview } from '../lib/semantic'
 import { isDocPage, type EditPage, type Page, type Route, type StagePage } from '../lib/route'
 import { depth, erdsOf, levelOf, specOf, stageVersions, truncate } from '../lib/versions'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
@@ -30,7 +29,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
 
   return (
     <>
-      <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} project={project?.id ?? ''} version={version} />
+      <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
       <TokenCard usages={usages} version={version} />
       <VersionsCard project={project} version={version} page={page} navigate={navigate} onReloadProjects={onReloadProjects} />
       <IssuesCard design={design} />
@@ -158,13 +157,11 @@ function VersionsCard({ project, version, page, navigate, onReloadProjects }: {
   )
 }
 
-function ProgressCard({ design, reviews, finalized, page, project, version }: {
+function ProgressCard({ design, reviews, finalized, page }: {
   design: Design
   reviews: Record<EditPage, Summary | null>
   finalized: Partial<Record<EditPage | 'final', string>>
   page: Page
-  project: string
-  version: string
 }) {
   const checks = design.completion.checks
   const passed = checks.filter((c) => c.passed).length
@@ -174,7 +171,7 @@ function ProgressCard({ design, reviews, finalized, page, project, version }: {
     <Card aria-labelledby="progress-title">
       <CardHeader eyebrow="Progress" title="진행 상황" titleId="progress-title" />
       <div className="space-y-5 px-5 pb-5">
-        {page === 'final' && <SemanticProgress project={project} version={version} finalizedAt={finalized.final} />}
+        {page === 'final' && <SemanticProgress design={design} finalizedAt={finalized.final} />}
         {order.map((p) => <ReviewProgress key={p} name={p === 'spec' ? '기능 명세서' : 'ERD'} review={reviews[p]} finalizedAt={finalized[p]} current={p === page} />)}
 
         <div>
@@ -198,26 +195,15 @@ function ProgressCard({ design, reviews, finalized, page, project, version }: {
   )
 }
 
-/** 최종본의 의미 검토 지적: 사람이 '확인함'으로 표시한 수 (최종 산출물 화면의 의미 검토 카드와 같은 표시) */
-function SemanticProgress({ project, version, finalizedAt }: { project: string; version: string; finalizedAt?: string }) {
-  const result = useSemanticReview(project, version)
-  const { checked } = useSemanticChecks(project, version)
-  if (result === undefined) return <Loading label="의미 검토 결과를 읽는 중" lines={2} />
-  if (result === null) {
-    return (
-      <div>
-        <p className="text-small font-medium">최종 산출물 검토 (의미 검토)</p>
-        <p className="mt-1.5 rounded-md bg-sunken px-2.5 py-1.5 text-small text-fg-3">아직 최종본이 없습니다. ERD를 최종 확정하면 의미 검토 결과가 여기에 나옵니다.</p>
-      </div>
-    )
-  }
-  const remarks = result.remarks
-  const done = remarks.filter((r, i) => checked[remarkKey(r, i)]).length
+/** 의미 검토 지적과 처리: ERD 화면에서 사람이 처리를 정한 수 (최종 산출물 화면의 지적 카드와 같은 기준) */
+function SemanticProgress({ design, finalizedAt }: { design: Design; finalizedAt?: string }) {
+  const remarks = design.issues.filter((i) => i.kind.startsWith('SEM_'))
+  const done = remarks.filter((i) => i.resolution || i.status === 'RESOLVED').length
+  const left = remarks.length - done
   return (
-    <ReviewProgress name="최종 산출물 검토 (의미 검토)" review={{ total: remarks.length, done, requiredLeft: 0 }} finalizedAt={finalizedAt} current
-      note={result.failed.length ? `검토 실패(미검증): ${result.failed.join(', ')}`
-        : remarks.length - done ? `확인할 AI 지적 ${remarks.length - done}건 남음 (필수 아님)` : '모든 지적을 확인했습니다'}
-      noteTone={result.failed.length ? 'warn' : remarks.length - done ? 'info' : 'ok'} />
+    <ReviewProgress name="의미 검토 지적 처리" review={{ total: remarks.length, done, requiredLeft: 0 }} finalizedAt={finalizedAt} current
+      note={!remarks.length ? '남은 지적 없음' : left ? `처리가 남지 않은 지적 ${left}건 (ERD 화면에서 처리)` : '모든 지적의 처리를 정했습니다'}
+      noteTone={left ? 'warn' : 'ok'} />
   )
 }
 

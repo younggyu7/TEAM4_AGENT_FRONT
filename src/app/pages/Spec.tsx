@@ -16,10 +16,7 @@ export interface EditorProps {
   onFocus: (id?: string) => void
   finalizedAt?: string
   version: string
-  nextAction?: { label: string; onClick: () => void }
   blockReason?: string
-  /** 최종 확정 직후 (다음 단계로: 기능 명세 → ERD 만들기·ERD 화면, ERD → 최종본 만들기) */
-  onFinalized?: () => void
 }
 
 /** 이동해 온 항목을 화면에 보이게 한다 (움직임 줄이기 설정이면 바로 이동) */
@@ -30,7 +27,7 @@ export function scrollToId(id: string) {
   })
 }
 
-export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version, nextAction, blockReason, onFinalized }: EditorProps) {
+export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version, blockReason }: EditorProps) {
   const [tab, setTab] = useState<Tab>('draft')
   const [query, setQuery] = useState('')
   const [flaggedOnly, setFlaggedOnly] = useState(false)
@@ -84,10 +81,8 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
             draft={draft}
             onJump={(id) => onFocus(id)}
             finalizedAt={finalizedAt}
-            onFinalize={() => { draft.finalize('spec'); onFinalized?.() }}
-            onUnfinalize={() => draft.unfinalize('spec')}
             subject="기능 명세서"
-            nextAction={nextAction}
+            action="내보내기 → ERD 만들기"
             blockReason={blockReason}
           />
         </div>

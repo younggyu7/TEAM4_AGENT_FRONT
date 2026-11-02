@@ -12,7 +12,7 @@ import { scrollToId, type EditorProps } from './Spec'
 
 type Tab = 'tables' | 'all' | 'review'
 
-export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, onOpenFunction, nextAction, blockReason, onFinalized }: EditorProps & {
+export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, onOpenFunction, blockReason }: EditorProps & {
   onOpenFunction: (id: string) => void
 }) {
   const [tab, setTab] = useState<Tab>('tables')
@@ -54,12 +54,11 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
           <ReviewPanel
             items={items}
             draft={draft}
-            onJump={(id) => onFocus(id)}
+            // 의미 검토 지적은 기능을 가리키기도 한다 → 테이블이 아니면 기능 명세 화면에서 연다
+            onJump={(id) => (entities.some((e) => e.entity_id === id) ? onFocus(id) : onOpenFunction(id))}
             finalizedAt={finalizedAt}
-            onFinalize={() => { draft.finalize('erd'); onFinalized?.() }}
-            onUnfinalize={() => draft.unfinalize('erd')}
             subject="ERD"
-            nextAction={nextAction}
+            action="ERD 최종 확정하기"
             blockReason={blockReason}
           />
         </div>

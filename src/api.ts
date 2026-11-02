@@ -1,4 +1,4 @@
-import type { Design, Project } from './types'
+import type { Design, FunctionSpec, Project } from './types'
 
 export type Version = string | number
 
@@ -69,16 +69,6 @@ export async function setVersionTitle(project: string, version: string, title: s
   await post('/projects/title', { project, version, title })
 }
 
-/** 개발 스펙의 기술 스택 선택지 (추천 순서) */
-export async function getTechStacks(): Promise<{ stack: string; note: string }[]> {
-  return ((await (await request('/tech-stacks')).json()) as { choices: { stack: string; note: string }[] }).choices
-}
-
-/** 최종본의 기술 스택 확정: 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고 design.json·버전 기록에 남긴다 */
-export async function setTechStack(project: string, version: string, stack: string): Promise<void> {
-  await post('/projects/tech-stack', { project, version, stack })
-}
-
 export interface Job {
   id: string
   project: string
@@ -98,13 +88,15 @@ export interface Job {
 export interface CreateVersionBody {
   project: string
   base: string
-  source: 'spec' | 'erd'    // 기능 명세 내보내기 / ERD 저장
+  source: 'spec' | 'answers' | 'erd'    // 기능 명세 내보내기 / 기능 명세 새 버전(답이 없어도 수정·의견으로) / ERD 저장
   data_model?: unknown      // 고친 data_model.json (ERD 저장)
   design?: unknown          // 기능 명세 수정본이 들어간 design.json (기능 명세 내보내기)
   functions_md?: string     // Agent에 넘길 기능 명세 Markdown
   spec_summary?: string     // 백엔드가 수정본을 못 받을 때 의견으로 넘길 변경 요약
   answers?: Record<string, string>   // 기능 명세 화면에서 새로 답한 확인 질문 (있으면 ERD 대신 'AI로 답 반영' → 기능 명세 새 버전)
   confirm_rules?: { function_id: string; rule: string }[]   // '추천안 맞음'으로 확인한 '(확인 필요)' 규칙 (내보내기·AI로 답 반영 모두 LLM 없이 '(결정)')
+  functions?: FunctionSpec[]    // 기능 명세 새 버전(answers): 사람이 고친 기능 → 고친 그대로 고정
+  dispositions?: Dispositions   // ERD 저장: 의미 검토 지적 처리를 새 ERD 버전에 남긴다
   feedback?: string
   title?: string
 }
@@ -117,9 +109,13 @@ export async function createVersion(body: CreateVersionBody): Promise<Job> {
   return ((await (await post('/projects/versions', body)).json()) as { job: Job }).job
 }
 
-/** ERD 최종 확정: 그 버전의 ERD를 기능 명세와 대조하는 의미 검토를 한 번 한다. 결과는 그 버전의 semantic_review.json. */
-export async function startReview(project: string, version: string): Promise<Job> {
-  return ((await (await post('/projects/review', { project, version })).json()) as { job: Job }).job
+/** ERD 화면에서 정한 의미 검토 지적 처리 (이슈 ID → 처리·메모) */
+export type DispositionChoice = 'applied' | 'not_issue' | 'later'
+export type Dispositions = Record<string, { choice: DispositionChoice; note: string }>
+
+/** ERD 최종 확정: 지적 처리를 남기고 DDL 검증·추적 검토·API 설계로 최종본(v<ERD>.1)을 만든다 (의미 검토는 다시 하지 않음). */
+export async function startReview(project: string, version: string, dispositions?: Dispositions): Promise<Job> {
+  return ((await (await post('/projects/review', { project, version, dispositions })).json()) as { job: Job }).job
 }
 
 /** 의미 검토 결과 (semantic_review.json). 아직 검토하지 않았으면 getFile이 null */
@@ -128,7 +124,7 @@ export interface SemanticReview {
   scope: string
   parts: string[]
   failed: string[]
-  remarks: { issue_id: string; kind: string; label: string; target: string; message: string; evidence: string; suggestion: string; owner: string }[]
+  remarks: { issue_id: string; kind: string; label: string; target: string; message: string; evidence: string; suggestion: string; owner: string; status?: string; resolution?: string }[]
   usage: { calls?: number; input_tokens?: number; output_tokens?: number }
 }
 

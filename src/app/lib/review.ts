@@ -8,10 +8,12 @@ import type { DraftState } from './draft'
 // - unconfirmed: '(가정)' 한도를 넘어 질문하지도 가정하지도 않은 '(확인 필요)' 업무 규칙 (문장은 추천안)
 //               → 확정 전에 '추천안 맞음' 표시, 또는 규칙을 고쳐 '(확인 필요)'를 지우거나 '(가정)'으로 바꾸면 사라짐
 // - assumption: 원문에 없어 '(가정)'으로 넣은 업무 규칙 → '확인함' 표시, 또는 규칙을 고쳐 '(가정)'을 지우면 사라짐
-// - issue     : 의미 검토·규칙 검사가 남긴 열린 지적 → 반영했으면 '확인함' 표시
+// - issue     : 규칙 검사가 남긴 열린 지적 → 반영했으면 '확인함' 표시
+// - remark    : ERD를 만들 때 의미 검토가 남긴 지적 (데이터 누락 등, Agent가 한 번 고친 뒤에도 남은 것)
+//               → ERD 화면에서 '반영함·문제 아님·미해결로 둠' 중 하나를 반드시 고른다 (최종 확정 때 서버에 남는다)
 // - check     : 편집 결과를 화면에서 바로 검사한 것 (PK 없음 등) → 고치면 저절로 해결
 
-export type ReviewKind = 'requirement' | 'question' | 'unconfirmed' | 'assumption' | 'issue' | 'check'
+export type ReviewKind = 'requirement' | 'question' | 'unconfirmed' | 'assumption' | 'issue' | 'remark' | 'check'
 
 export interface ReviewItem {
   id: string
@@ -33,6 +35,7 @@ export const KIND_LABEL: Record<ReviewKind, string> = {
   unconfirmed: '확인 필요 규칙',
   assumption: '가정',
   issue: '검토 지적',
+  remark: '의미 검토 지적',
   check: '자동 검사',
 }
 
@@ -170,10 +173,35 @@ export function erdReview(design: Design, entities: Entity[], draft: DraftState)
   }
 
   for (const issue of design.issues.filter(isOpen)) {
-    const entity = splitTargets(issue.target_id).map((t) => entities.find((e) => e.entity_id === t)).find(Boolean)
-    if (entity) items.push(issueItem(issue, entity.entity_id, entity.label, draft))
+    const targets = splitTargets(issue.target_id)
+    const entity = targets.map((t) => entities.find((e) => e.entity_id === t)).find(Boolean)
+    if (issue.kind.startsWith('SEM_')) {
+      // 의미 검토 지적은 기능을 가리키기도 한다 (그 기능의 데이터가 빠짐). 테이블이 없으면 기능으로 이동한다
+      items.push(remarkItem(issue, entity?.entity_id ?? targets[0], entity?.label, draft))
+    } else if (entity) items.push(issueItem(issue, entity.entity_id, entity.label, draft))
   }
   return items
+}
+
+/** 의미 검토 지적의 처리: 화면에서 고른 것, 없으면 이전 ERD 버전에서 이어받은 처리('kept') */
+export function remarkDisposition(issue: Issue, draft: DraftState): string | undefined {
+  return draft.dispositions?.[issue.issue_id]?.choice ?? (issue.resolution ? 'kept' : undefined)
+}
+
+function remarkItem(issue: Issue, targetId: string | undefined, targetLabel: string | undefined, draft: DraftState): ReviewItem {
+  const [title, ...rest] = issue.message.split('\n')
+  return {
+    id: `r:${issue.issue_id}`,
+    kind: 'remark',
+    title,
+    detail: [...rest, issue.attempts > 0 ? '데이터 모델 Agent가 이 지적으로 한 번 고친 뒤에도 남은 지적입니다.' : ''].filter(Boolean).join('\n'),
+    targetId,
+    targetLabel,
+    required: true,
+    resolved: Boolean(remarkDisposition(issue, draft)),
+    auto: false,
+    issue,
+  }
 }
 
 export function assumptionId(functionId: string, rule: string) {
