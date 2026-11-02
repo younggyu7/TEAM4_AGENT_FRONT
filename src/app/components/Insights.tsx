@@ -1,14 +1,12 @@
-import { Check, CheckCircle, Info, PencilSimple, Warning, WarningOctagon, X, XCircle } from '@phosphor-icons/react'
-import { useMemo, useState } from 'react'
-import { setVersionTitle } from '../../api'
+import { CheckCircle, Info, Warning, WarningOctagon, XCircle } from '@phosphor-icons/react'
+import { useMemo } from 'react'
 import { formatDate } from '../../labels'
 import type { Design, Project } from '../../types'
 import { useUsages, type Load, type VersionUsage } from '../lib/data'
 import { costOf, shortModel, usd } from '../lib/pricing'
-import { isDocPage, type EditPage, type Page, type Route, type StagePage } from '../lib/route'
-import { depth, erdsOf, levelOf, specOf, stageVersions, truncate } from '../lib/versions'
+import type { EditPage, Page } from '../lib/route'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
-import { Badge, Card, CardHeader, compact, cx, fmt, IconButton, Loading, TextInput } from './ui'
+import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
 
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
@@ -32,126 +30,6 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
       <TokenCard usages={usages} version={version} />
       <IssuesCard design={design} />
     </>
-  )
-}
-
-/** 목록 순서: 최상위 버전은 최신이 위, 그 아래 번호(v4.1 …)는 기준 버전 바로 밑에 최신이 위 */
-function treeOrder(a: string, b: string): number {
-  const x = a.split('.').map(Number)
-  const y = b.split('.').map(Number)
-  for (let i = 0; i < Math.max(x.length, y.length); i++) {
-    if (x[i] === undefined) return -1   // a가 b의 기준 버전 → 먼저
-    if (y[i] === undefined) return 1
-    if (x[i] !== y[i]) return y[i] - x[i]
-  }
-  return 0
-}
-
-/** 설계 버전 목록 (왼쪽 사이드바): 단계만 다시 만든 버전(v4.1)은 기준 버전 아래에 들여 쓰고, 제목은 그 자리에서 고친다 */
-export function VersionsCard({ project, version, page, navigate, onReloadProjects }: {
-  project?: Project
-  version: string
-  page: Page
-  navigate: (r: Route) => void
-  onReloadProjects: () => void
-}) {
-  const [editing, setEditing] = useState<string | null>(null)
-  const [draftTitle, setDraftTitle] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const all = project?.versions ?? []
-  const stage = isDocPage(page) ? null : (page as StagePage)
-  // 단계 화면에서는 그 단계 번호만 (기능 명세 v2 / ERD v2.1… / 최종 v2.1.1…), 산출물 보기에서는 전체를 계보 순서로
-  const versions = useMemo(
-    () => (stage ? stageVersions(all, stage, version) : [...all].sort((a, b) => treeOrder(a.design_version, b.design_version))),
-    [all, stage, version],
-  )
-  const spec = specOf(all, version)
-  const erd = levelOf(all, version) >= 1 ? truncate(version, depth(spec) + 1) : version
-  const heading = stage === 'spec' ? '기능 명세 버전' : stage === 'erd' ? `기능 명세 v${spec}로 만든 ERD` : stage === 'final' ? `ERD v${erd}로 만든 최종본` : '설계 버전'
-  const empty = stage === 'final'
-    ? `아직 최종본 버전이 없습니다. ERD 화면에서 v${erd}를 'ERD 최종 확정'하면 v${erd}.1로 만들어집니다.`
-    : stage === 'erd' ? `기능 명세 v${spec}로 만든 ERD가 없습니다. 기능 명세에서 '내보내기 → ERD 만들기'를 하세요.` : '버전 기록이 없습니다.'
-
-  const save = async (v: string) => {
-    if (!project) return
-    setSaving(true)
-    setError('')
-    try {
-      await setVersionTitle(project.id, v, draftTitle)
-      setEditing(null)
-      onReloadProjects()
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Card aria-labelledby="versions-title">
-      <CardHeader eyebrow="Versions" title={heading} titleId="versions-title" />
-      {versions.length === 0 && <p className="px-5 pb-5 text-small text-fg-3">{empty}</p>}
-      <ol className="px-3 pb-3">
-        {versions.map((v) => {
-          const current = v.design_version === version
-          // 단계 화면에서는 같은 단계끼리라 들여쓰지 않는다
-          const indent = stage ? 0 : depth(v.design_version)
-          const kind = stage === 'erd' && levelOf(all, v.design_version) === 0
-            ? '기능 명세와 함께 만든 초안'
-            : stage === 'spec' ? (() => {
-                const n = erdsOf(all, v.design_version).length
-                return `${v.stage === 'function_designer' ? '답 반영 · ' : ''}${n ? `ERD ${n}개` : 'ERD 없음'}`
-              })()
-            : v.stage === 'function_designer' ? '기능 명세 다시'
-            : v.stage && v.stage !== 'full' ? '데이터 설계 다시' : depth(v.design_version) === 0 ? '전체 실행' : ''
-          return (
-            <li key={v.design_version} style={{ paddingLeft: indent * 16 }} className={cx(indent > 0 && 'border-l border-line ml-3')}>
-              {editing === v.design_version ? (
-                <form
-                  className="flex items-center gap-1.5 px-2 py-1.5"
-                  onSubmit={(e) => { e.preventDefault(); void save(v.design_version) }}
-                >
-                  <span className="w-10 shrink-0 text-label font-semibold tabular-nums">v{v.design_version}</span>
-                  <TextInput dense autoFocus aria-label={`v${v.design_version} 제목`} value={draftTitle} maxLength={80}
-                    onChange={(e) => setDraftTitle(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setEditing(null) }} />
-                  <IconButton type="submit" label="제목 저장" icon={<Check />} disabled={saving} className="size-8" />
-                  <IconButton label="취소" icon={<X />} onClick={() => setEditing(null)} className="size-8" />
-                </form>
-              ) : (
-                <div className={cx('group flex items-center rounded-md transition-colors duration-150', current ? 'bg-sunken' : 'hover:bg-sunken')}>
-                  <button
-                    type="button"
-                    aria-current={current ? 'true' : undefined}
-                    disabled={!project}
-                    onClick={() => project && navigate({ name: 'workspace', project: project.id, version: v.design_version, page })}
-                    className="grid min-h-11 min-w-0 flex-1 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5 text-left"
-                  >
-                    <span className={cx('text-label tabular-nums', current ? 'font-semibold' : 'text-fg-2')}>v{v.design_version}</span>
-                    <span className="min-w-0">
-                      <span className={cx('block truncate text-small', v.title ? 'font-medium text-fg' : 'text-fg-2')}>{v.title || formatDate(v.created_at) || '날짜 없음'}</span>
-                      <span className="block truncate text-micro text-fg-3">
-                        {[v.title && formatDate(v.created_at), kind, !stage && v.parent && `v${v.parent}에서`].filter(Boolean).join(' · ')}
-                      </span>
-                    </span>
-                    {v.db_validation && (
-                      <Badge tone={v.db_validation === 'PASSED' ? 'ok' : 'danger'}>DB {v.db_validation === 'PASSED' ? '통과' : '실패'}</Badge>
-                    )}
-                  </button>
-                  <IconButton
-                    label={`v${v.design_version} 제목 ${v.title ? '고치기' : '붙이기'}`}
-                    icon={<PencilSimple />}
-                    className="mr-1 size-8 opacity-60 group-hover:opacity-100 focus-visible:opacity-100"
-                    onClick={() => { setEditing(v.design_version); setDraftTitle(v.title ?? ''); setError('') }}
-                  />
-                </div>
-              )}
-            </li>
-          )
-        })}
-      </ol>
-      {error && <p role="alert" className="px-5 pb-4 text-small text-danger">제목을 저장하지 못했습니다: {error}</p>}
-    </Card>
   )
 }
 

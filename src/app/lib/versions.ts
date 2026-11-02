@@ -73,15 +73,3 @@ export function stageTargets(versions: VersionRecord[], current: string): Record
   return { spec, erd, final }
 }
 
-/** 단계 화면의 오른쪽 '설계 버전' 목록: 그 단계 번호만, 계보에 맞춰 */
-export function stageVersions(versions: VersionRecord[], page: StagePage, current: string): VersionRecord[] {
-  if (page === 'spec') return versions.filter((v) => levelOf(versions, v.design_version) === 0).sort((a, b) => compare(b.design_version, a.design_version))
-  const spec = specOf(versions, current)
-  if (page === 'erd') {
-    const own = versions.find((v) => v.design_version === spec && v.stage !== SPEC_STAGE)
-    // 예전 전체 실행의 기능 명세 버전에는 함께 만든 ERD 초안이 있어 목록 끝에 둔다
-    return [...erdsOf(versions, spec), ...(own ? [own] : [])]
-  }
-  const erd = levelOf(versions, current) >= 1 ? truncate(current, depth(spec) + 1) : current
-  return childrenOf(versions, erd)
-}

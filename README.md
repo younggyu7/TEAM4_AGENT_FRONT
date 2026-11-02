@@ -4,7 +4,7 @@ FastAPI 백엔드(`TEAM4_AGENT/backend`)가 만든 산출물을 화면으로 보
 
 | 주소 | 페이지 | 스타일 |
 | --- | --- | --- |
-| `/` (`index.html`, `src/app/`) | **설계 초안 작업실**: 로그인 · 홈 · 기능 명세서 · ERD(테이블 편집·전체 ERD) · 최종 산출물 · 산출물 보기(개요·요구사항·확인 질문·최종 ERD·DDL·추적·이슈·판단 기록·개발 스펙). 3단 화면(왼쪽 사용자·지금 프로젝트의 버전·대시보드·프로젝트 / 가운데 위 단계 표시줄 '기능 명세 · ERD · 최종 산출물 · 산출물 보기' / 오른쪽 진행 상황·토큰·지적). 왼쪽에는 단계 메뉴가 없고 프로젝트를 누르면 그 프로젝트의 최신 버전이 열린다 | Tailwind v4, [design-system/pages/workspace.md](design-system/pages/workspace.md) |
+| `/` (`index.html`, `src/app/`) | **설계 초안 작업실**: 로그인 · 홈 · 기능 명세서 · ERD(테이블 편집·전체 ERD) · 최종 산출물 · 산출물 보기(개요·요구사항·확인 질문·최종 ERD·DDL·추적·이슈·판단 기록·개발 스펙). 3단 화면(왼쪽 사용자·지금 프로젝트의 설계 버전 트리(Git 그래프처럼 아래 기능 명세 → 가운데 ERD → 위 최종 산출물, 기능 명세마다 선 하나, 다시 만든 기능 명세 v2는 v1에서 갈라짐, 누르면 그 단계 화면)·대시보드·프로젝트(3개 넘으면 더보기) / 가운데 위 단계 표시줄 '기능 명세 · ERD · 최종 산출물 · 산출물 보기' / 오른쪽 진행 상황·토큰·지적). 왼쪽에는 단계 메뉴가 없고 프로젝트를 누르면 그 프로젝트의 최신 버전이 열린다 | Tailwind v4, [design-system/pages/workspace.md](design-system/pages/workspace.md) |
 | `/viewer.html` (`src/main.tsx`) | 이전 산출물 뷰어. 같은 내용이 작업실 '산출물 보기'로 옮겨져 메뉴에서는 링크하지 않는다 (아래 '화면' 표는 이 뷰어 기준) | `src/styles.css`, [design-system/MASTER.md](design-system/MASTER.md) |
 
 ```bash

@@ -5,7 +5,7 @@ import { draftSummaries } from '../lib/draft'
 import type { Load } from '../lib/data'
 import type { Route } from '../lib/route'
 import { initials, type User } from '../lib/session'
-import { VersionsCard } from './Insights'
+import { VersionGraph } from './VersionGraph'
 import { cx, fmt, IconButton } from './ui'
 
 /** 모든 화면이 같이 쓰는 값 (App이 만든다) */
@@ -96,6 +96,10 @@ export function Shell({ user, onSignOut, route, navigate, projects, onReloadProj
 
 /** 왼쪽 프로젝트 목록에 처음 보이는 수 (넘으면 '더보기') */
 const PROJECTS_SHOWN = 3
+/** 프로젝트 목록을 펼쳤는지 (화면을 옮길 때마다 사이드바가 새로 그려지므로 밖에 둔다) */
+let projectsExpanded = false
+/** 프로젝트의 마지막 수정 시각: 가장 최근에 만든 버전의 생성 시각 */
+const lastChanged = (p: Project) => p.versions.reduce((m, v) => (v.created_at && v.created_at > m ? v.created_at : m), '')
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -123,10 +127,17 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
   const list = projects.state === 'ready' ? projects.data : []
   const current = route.name === 'workspace' ? route : null
   const project = current ? list.find((p) => p.id === current.project) : undefined
-  // 프로젝트가 많으면 PROJECTS_SHOWN개만 보이고 '더보기'로 펼친다 (보고 있는 프로젝트는 접혀도 보인다)
-  const [expanded, setExpanded] = useState(false)
-  const hidden = Math.max(0, list.length - PROJECTS_SHOWN)
-  const shown = expanded ? list : list.filter((p, i) => i < PROJECTS_SHOWN || p.id === current?.project)
+  // 최근에 버전이 생긴(수정한) 프로젝트가 위. 접으면 PROJECTS_SHOWN개만 보이고 '더보기'로 펼친다.
+  // 보고 있는 프로젝트가 그 아래에 있으면 마지막 자리에 넣어 접어도 보이게 한다 (개수는 그대로).
+  // 펼침 상태는 화면을 옮겨도(사이드바가 다시 그려져도) 유지한다
+  const [expanded, setExpandedState] = useState(projectsExpanded)
+  const setExpanded = (v: boolean) => { projectsExpanded = v; setExpandedState(v) }
+  const sorted = useMemo(() => [...list].sort((a, b) => lastChanged(b).localeCompare(lastChanged(a))), [list])
+  const hidden = Math.max(0, sorted.length - PROJECTS_SHOWN)
+  const top = sorted.slice(0, PROJECTS_SHOWN)
+  const picked = sorted.find((p) => p.id === current?.project)
+  const shown = expanded ? sorted
+    : picked && !top.includes(picked) ? [...top.slice(0, PROJECTS_SHOWN - 1), picked] : top
 
   // 초안은 이 브라우저 저장소에 있으므로 화면을 옮길 때마다 다시 센다
   const drafts = useMemo(() => draftSummaries(), [route])
@@ -161,9 +172,9 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
         </ul>
       </nav>
 
-      {/* 보고 있는 프로젝트의 버전 (단계 화면은 그 단계 번호만, 산출물 보기는 전체). 단계 이동은 가운데 위 단계 표시줄 */}
+      {/* 보고 있는 프로젝트의 버전 트리 (아래 기능 명세 → 가운데 ERD → 위 최종 산출물, 다시 만든 기능 명세는 갈라져 나온다) */}
       {current && project && (
-        <VersionsCard project={project} version={current.version} page={current.page} navigate={navigate} onReloadProjects={onReloadProjects} />
+        <VersionGraph project={project} version={current.version} navigate={navigate} onReloadProjects={onReloadProjects} />
       )}
 
       {/* 사용자 대시보드 */}
@@ -213,7 +224,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
           <button
             type="button"
             aria-expanded={expanded}
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => setExpanded(!expanded)}
             className="mt-0.5 flex min-h-8 w-full items-center gap-1.5 rounded-md px-2.5 text-small text-fg-3 transition-colors duration-150 hover:bg-card hover:text-fg"
           >
             <CaretDown size={14} aria-hidden="true" className={cx('transition-transform duration-200', expanded && 'rotate-180')} />
