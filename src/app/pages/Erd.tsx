@@ -95,7 +95,10 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
                         <span className="block truncate text-micro text-fg-3">{e.label}</span>
                       </span>
                       <span className="flex items-center gap-1">
-                        {draft.state.entities[e.entity_id] && <span className="size-1.5 rounded-full bg-info" title="수정됨" aria-label="수정됨" />}
+                        {draft.state.entities[e.entity_id] && (
+                          <span className="size-1.5 rounded-full bg-info" title={`수정됨${draft.editors[e.entity_id] ? ` · ${draft.editors[e.entity_id]}` : ''}`}
+                            aria-label={`수정됨${draft.editors[e.entity_id] ? ` · ${draft.editors[e.entity_id]}` : ''}`} />
+                        )}
                         {count > 0 && <Badge tone={count ? 'warn' : 'neutral'}>{count}</Badge>}
                       </span>
                     </button>

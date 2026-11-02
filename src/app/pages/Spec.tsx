@@ -153,7 +153,7 @@ function FunctionRow({ fn, expanded, openCount, edited, onToggle, draft }: {
           </span>
         </span>
         <span className="flex items-center gap-1.5">
-          {edited && <Badge tone="info">수정됨</Badge>}
+          {edited && <Badge tone="info">수정됨{draft.editors[fn.function_id] ? ` · ${draft.editors[fn.function_id]}` : ''}</Badge>}
           {openCount > 0 && <Badge tone="warn">확인 {openCount}</Badge>}
           <CaretDown size={16} aria-hidden="true" className={cx('text-fg-3 transition-transform duration-200', expanded && 'rotate-180')} />
         </span>

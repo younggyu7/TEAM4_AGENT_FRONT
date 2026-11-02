@@ -1,5 +1,6 @@
 import { CheckCircle, Info, Warning, WarningOctagon, XCircle } from '@phosphor-icons/react'
 import { useMemo } from 'react'
+import type { DraftLogEntry } from '../../api'
 import { formatDate } from '../../labels'
 import type { Design, Project } from '../../types'
 import { useUsages, type Load, type VersionUsage } from '../lib/data'
@@ -11,7 +12,7 @@ import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
 
-export function WorkspaceInsights({ design, project, version, reviews, finalized, page }: {
+export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log }: {
   design: Design
   project?: Project
   version: string
@@ -19,6 +20,8 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
   reviews: Record<EditPage, Summary | null>
   finalized: Partial<Record<EditPage | 'final', string>>
   page: Page
+  /** 기능 명세·ERD 화면: 이 버전 초안의 변경 내역 (누가·언제·무엇을) */
+  log?: DraftLogEntry[]
 }) {
   const versions = project?.versions ?? [{ design_version: version }]
   const targets = useMemo(() => versions.map((v) => ({ project: project?.id ?? '', version: v.design_version })), [versions, project?.id])
@@ -27,9 +30,47 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
   return (
     <>
       <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
+      {log && <ChangeLogCard log={log} />}
       <TokenCard usages={usages} version={version} />
       <IssuesCard design={design} />
     </>
+  )
+}
+
+/** 변경 내역: 파트원·파트장이 이 버전 초안에서 무엇을 고쳤는지 (최신이 위). 승인 요청·취소·확정도 같이 */
+function ChangeLogCard({ log }: { log: DraftLogEntry[] }) {
+  const shown = [...log].reverse().slice(0, 30)
+  return (
+    <Card aria-labelledby="change-log">
+      <CardHeader eyebrow="Changes" title="변경 내역" titleId="change-log" actions={<span className="text-label font-medium tabular-nums">{log.length}건</span>} />
+      <div className="px-5 pb-5">
+        {log.length === 0 ? <p className="text-small text-fg-3">아직 고친 사람이 없습니다 (원본 초안 그대로).</p> : (
+          <ol className="space-y-3">
+            {shown.map((e, i) => (
+              <li key={`${e.at}-${i}`} className="text-small">
+                <p className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium text-fg">{e.by.name}</span>
+                  {e.event === 'request' && <Badge tone="info">승인 요청</Badge>}
+                  {e.event === 'request_cancelled' && <Badge tone="warn">요청 취소</Badge>}
+                  {e.event === 'confirm' && <Badge tone="ok">확정</Badge>}
+                  <span className="text-fg-3 tabular-nums">{formatDate(e.at)}</span>
+                </p>
+                <ul className="mt-1 space-y-0.5 text-fg-2">
+                  {e.changes.slice(0, 8).map((c, j) => (
+                    <li key={j}>
+                      {c.target && <span className="font-mono text-micro text-fg-3">{c.target} </span>}
+                      {c.label && !e.event && <span className="text-fg-3">{c.label} · </span>}
+                      {c.what}
+                    </li>
+                  ))}
+                  {e.changes.length > 8 && <li className="text-fg-3">외 {e.changes.length - 8}건</li>}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    </Card>
   )
 }
 

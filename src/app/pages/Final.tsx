@@ -1,9 +1,9 @@
 import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useState } from 'react'
-import { decideFinal, getTechStacks, setTechStack, type Job } from '../../api'
+import { decideFinal, getTechStacks, setTechStack, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
-import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
+import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
 import { ZipButton } from '../components/ZipButton'
 import { ARTIFACT_FILES, DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
 import { refreshVersion, useFile } from '../lib/data'
@@ -39,7 +39,9 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
           eyebrow={isFinal ? `Deliverables · v${version}` : `Deliverables · ERD v${version} 기준 미리 보기`}
           title={record?.title ? `최종 산출물 · ${record.title}` : '최종 산출물'}
           titleId="final-title"
-          actions={isFinal && finalized.final ? <FinalBadge at={finalized.final} /> : <Badge tone="warn">최종 확정 전 미리 보기</Badge>}
+          actions={isFinal && record?.approval?.decision === 'approve'
+            ? <ApprovedBadge at={record.approval.at} by={record.approval.by.name} />
+            : isFinal && finalized.final ? <FinalBadge at={finalized.final} /> : <Badge tone="warn">최종 확정 전 미리 보기</Badge>}
         >
           <p className="mt-1 text-label text-fg-3">
             요구사항 {fmt(design.requirements.length)} · 기능 {fmt(design.functions.length)} · 테이블 {fmt(entities.length)} · 관계 {fmt(relationsOf(entities).length)}
@@ -67,7 +69,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         </div>
       </Card>
 
-      {isFinal && record && <DecisionCard project={project} version={version} record={record} canDecide={canDecide} onDecided={onDecided} />}
+      {isFinal && record && <DecisionCard project={project} version={version} record={record} design={design} canDecide={canDecide} onDecided={onDecided} />}
 
       <RemarksCard remarks={remarks} isFinal={isFinal} onOpen={onOpenEntity} entities={new Set(entities.map((e) => e.entity_id))} />
 
@@ -82,32 +84,45 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         <FileList project={project} version={version} files={ARTIFACT_FILES} />
       </Card>
 
-      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canDecide={canDecide} />
+      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canDecide={canDecide}
+        chosen={record?.tech_stack?.basis === '확정'} onChosen={onDecided} />
     </div>
   )
 }
 
+const STAGE_NAME = { spec: '기능 명세', erd: 'ERD' } as const
+/** 결정 한 줄 요약: 승인 / 수정 지시 → 기능 명세·ERD (항목 n개) */
+const decisionText = (a: Approval) => a.decision === 'approve' ? '승인'
+  : `수정 지시 → ${targetsOf(a).map((t) => STAGE_NAME[t]).join('·') || '단계 없음'}${a.items?.length ? ` (항목 ${a.items.length}개)` : ''}`
+
 /**
- * 팀장 결정: 최종본을 승인하거나, 지시 내용과 함께 기능 명세·ERD 단계로 돌려보낸다 (POST /projects/approval).
+ * 팀장 결정: 최종본을 승인하거나, 고칠 내용과 함께 기능 명세·ERD 단계로 돌려보낸다 (POST /projects/approval).
+ * 수정 지시는 두 단계를 함께 고를 수 있고, 최종본의 기능·테이블을 골라 항목마다 메모를 남긴다 (항목만 골라도 그 단계로).
  * 돌려보낸 지시는 그 단계 화면 위에 보이고, 담당 파트가 고쳐 새 버전 → 다시 최종 확정한다. 기록은 버전 기록에 쌓인다.
  */
-function DecisionCard({ project, version, record, canDecide, onDecided }: {
-  project: string; version: string; record: VersionRecord; canDecide: boolean; onDecided: () => void
+function DecisionCard({ project, version, record, design, canDecide, onDecided }: {
+  project: string; version: string; record: VersionRecord; design: Design; canDecide: boolean; onDecided: () => void
 }) {
   const [mode, setMode] = useState<'idle' | 'changes'>('idle')
-  const [target, setTarget] = useState<'spec' | 'erd'>('erd')
+  const [stages, setStages] = useState<{ spec: boolean; erd: boolean }>({ spec: false, erd: false })
+  const [items, setItems] = useState<Record<string, ChangeItem>>({})   // '단계:ID' → 항목
   const [comment, setComment] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const ids = { comment: useId() }
   const last = record.approval
+  const picked = Object.values(items)
   const send = async (decision: 'approve' | 'changes') => {
     setSending(true)
     setError('')
     try {
-      await decideFinal({ project, version, decision, target: decision === 'changes' ? target : undefined, comment })
+      await decideFinal({ project, version, decision, comment,
+        targets: decision === 'changes' ? (['spec', 'erd'] as const).filter((t) => stages[t]) : undefined,
+        items: decision === 'changes' ? picked : undefined })
       setMode('idle')
       setComment('')
+      setItems({})
+      setStages({ spec: false, erd: false })
       refreshVersion(project, version)
       onDecided()
     } catch (e) {
@@ -116,40 +131,81 @@ function DecisionCard({ project, version, record, canDecide, onDecided }: {
       setSending(false)
     }
   }
+  const approved = last?.decision === 'approve'
+  const canSend = (stages.spec || stages.erd || picked.length > 0) && (comment.trim() !== '' || picked.some((i) => i.note.trim()))
+  const toggle = (item: Omit<ChangeItem, 'note'>, on: boolean) => setItems((m) => {
+    const key = `${item.stage}:${item.target_id}`
+    const { [key]: _, ...rest } = m
+    return on ? { ...m, [key]: { ...item, note: m[key]?.note ?? '' } } : rest
+  })
   return (
-    <Card aria-labelledby="final-decision">
-      <CardHeader eyebrow="Decision" title="팀장 결정" titleId="final-decision"
-        actions={last ? <Badge tone={last.decision === 'approve' ? 'ok' : 'warn'}>{last.decision === 'approve' ? '최종 승인됨' : `수정 지시 → ${last.target === 'spec' ? '기능 명세' : 'ERD'}`}</Badge>
+    <Card aria-labelledby="final-decision" className={cx(approved && '!border-ok/50 !bg-ok-soft')}>
+      <CardHeader eyebrow="Decision" title={approved ? '최종 승인된 산출물' : '팀장 결정'} titleId="final-decision"
+        actions={last ? <Badge tone={last.decision === 'approve' ? 'ok' : 'warn'}>{last.decision === 'approve' ? '최종 승인됨' : decisionText(last)}</Badge>
           : <Badge tone="neutral">결정 전</Badge>}>
         <p className="mt-1 text-small text-fg-3">
-          {last ? `${last.by.name} · ${formatDate(last.at)}${last.comment ? ` — ${last.comment}` : ''}`
+          {approved ? `${last.by.name}님이 ${formatDate(last.at)}에 승인했습니다.`
+            : last ? `${last.by.name} · ${formatDate(last.at)}${last.comment ? ` — ${last.comment}` : ''}`
             : '팀장이 이 최종본을 승인하거나, 고칠 내용을 적어 기능 명세·ERD 단계로 돌려보냅니다.'}
         </p>
       </CardHeader>
       <div className="space-y-3 px-5 pb-5">
         {!canDecide && <p className="text-small text-fg-3">최종 승인·수정 지시는 팀장만 할 수 있습니다.</p>}
+        {approved && (
+          <p className="flex items-center gap-1.5 text-label font-semibold text-ok">
+            <SealCheck size={18} weight="fill" aria-hidden="true" />승인 완료
+          </p>
+        )}
+        {!approved && last?.decision === 'changes' && (last.items?.length ?? 0) > 0 && (
+          <ul className="space-y-0.5 rounded-md bg-warn-soft px-3 py-2 text-small">
+            {last.items!.map((i) => (
+              <li key={`${i.stage}:${i.target_id}`}><Badge tone="warn">{STAGE_NAME[i.stage]}</Badge> <span className="font-mono text-micro">{i.target_id}</span> {i.label} {i.note && <span className="text-fg-2">— {i.note}</span>}</li>
+            ))}
+          </ul>
+        )}
         {canDecide && mode === 'idle' && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="ok" icon={<SealCheck />} disabled={sending} onClick={() => void send('approve')}>최종 승인</Button>
-            <Button icon={<ArrowBendUpLeft />} disabled={sending} onClick={() => setMode('changes')}>수정 지시</Button>
+            {!approved && <Button variant="ok" icon={<SealCheck />} disabled={sending} onClick={() => void send('approve')}>최종 승인</Button>}
+            <Button icon={<ArrowBendUpLeft />} disabled={sending} onClick={() => setMode('changes')}
+              title={approved ? '승인을 거두고 고칠 내용과 함께 돌려보냅니다' : undefined}>
+              {approved ? '승인 거두고 수정 지시' : '수정 지시'}
+            </Button>
           </div>
         )}
         {canDecide && mode === 'changes' && (
-          <div className="space-y-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-3">
-            <div role="radiogroup" aria-label="돌려보낼 단계" className="flex flex-wrap gap-3 text-label">
-              {(['spec', 'erd'] as const).map((t) => (
-                <label key={t} className="flex cursor-pointer items-center gap-1.5">
-                  <input type="radio" name="target" checked={target === t} onChange={() => setTarget(t)} />
-                  {t === 'spec' ? '기능 명세 (기획 파트)' : 'ERD (데이터 파트)'}
-                </label>
-              ))}
+          <div className="space-y-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-3">
+            <fieldset className="flex flex-wrap gap-4 text-label">
+              <legend className="mb-1 text-small font-medium text-fg">돌려보낼 단계 (둘 다 고를 수 있음)</legend>
+              <Checkbox checked={stages.spec} onChange={(v) => setStages((s) => ({ ...s, spec: v }))} label="기능 명세 (기획 파트)" />
+              <Checkbox checked={stages.erd} onChange={(v) => setStages((s) => ({ ...s, erd: v }))} label="ERD (데이터 파트)" />
+            </fieldset>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <ItemPicker title="고칠 기능" stage="spec" options={design.functions.map((f) => ({ id: f.function_id, label: f.name }))}
+                items={items} onToggle={toggle} />
+              <ItemPicker title="고칠 테이블" stage="erd" options={design.data_model.entities.map((e) => ({ id: e.entity_id, label: e.label }))}
+                items={items} onToggle={toggle} />
             </div>
-            <Label htmlFor={ids.comment}>지시 내용</Label>
-            <TextArea id={ids.comment} value={comment} maxLength={2000} placeholder="예: 결재선 단계를 3단계까지 받도록 기능과 테이블을 고칠 것"
-              onChange={(e) => setComment(e.target.value)} />
+            {picked.length > 0 && (
+              <ul className="space-y-1.5">
+                {picked.map((i) => (
+                  <li key={`${i.stage}:${i.target_id}`} className="flex flex-wrap items-center gap-2 text-small">
+                    <Badge tone="warn">{STAGE_NAME[i.stage]}</Badge>
+                    <span className="font-mono text-micro">{i.target_id}</span><span className="text-fg-2">{i.label}</span>
+                    <TextInput dense className="min-w-0 flex-1" aria-label={`${i.target_id} 고칠 내용`} placeholder="고칠 내용" value={i.note} maxLength={1000}
+                      onChange={(e) => setItems((m) => ({ ...m, [`${i.stage}:${i.target_id}`]: { ...i, note: e.target.value } }))} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div>
+              <Label htmlFor={ids.comment} hint="항목별 메모가 있으면 선택">전체 의견</Label>
+              <TextArea id={ids.comment} value={comment} maxLength={2000} placeholder="예: 결재선 단계를 3단계까지 받도록 기능과 테이블을 고칠 것"
+                onChange={(e) => setComment(e.target.value)} />
+            </div>
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="ghost" onClick={() => setMode('idle')}>취소</Button>
-              <Button size="sm" variant="primary" disabled={sending || !comment.trim()} onClick={() => void send('changes')}>돌려보내기</Button>
+              <Button size="sm" variant="primary" disabled={sending || !canSend} onClick={() => void send('changes')}
+                title={canSend ? undefined : '돌려보낼 단계(또는 항목)와 의견·메모를 적으세요'}>돌려보내기</Button>
             </div>
           </div>
         )}
@@ -160,7 +216,7 @@ function DecisionCard({ project, version, record, canDecide, onDecided }: {
             <ol className="mt-2 space-y-1">
               {[...record.approvals!].reverse().map((a, i) => (
                 <li key={i} className="text-fg-2">
-                  {formatDate(a.at)} · {a.by.name} · {a.decision === 'approve' ? '승인' : `수정 지시 → ${a.target === 'spec' ? '기능 명세' : 'ERD'}`}
+                  {formatDate(a.at)} · {a.by.name} · {decisionText(a)}
                   {a.comment && <span className="text-fg-3"> — {a.comment}</span>}
                 </li>
               ))}
@@ -169,6 +225,41 @@ function DecisionCard({ project, version, record, canDecide, onDecided }: {
         )}
       </div>
     </Card>
+  )
+}
+
+/** 수정 지시에서 고칠 기능·테이블 고르기 (검색해서 체크) */
+function ItemPicker({ title, stage, options, items, onToggle }: {
+  title: string; stage: 'spec' | 'erd'; options: { id: string; label: string }[]
+  items: Record<string, ChangeItem>; onToggle: (item: Omit<ChangeItem, 'note'>, on: boolean) => void
+}) {
+  const [q, setQ] = useState('')
+  const query = q.trim().toLowerCase()
+  const shown = options.filter((o) => !query || o.id.toLowerCase().includes(query) || o.label.toLowerCase().includes(query)).slice(0, 50)
+  return (
+    <div className="rounded-md border border-line bg-card px-2.5 py-2">
+      <p className="mb-1.5 text-small font-medium">{title} <span className="font-normal text-fg-3">{options.length}개</span></p>
+      <TextInput dense type="search" aria-label={`${title} 검색`} placeholder="이름·ID 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+      <ul className="mt-1.5 max-h-40 overflow-y-auto">
+        {shown.map((o) => (
+          <li key={o.id}>
+            <Checkbox checked={Boolean(items[`${stage}:${o.id}`])} onChange={(v) => onToggle({ stage, target_id: o.id, label: o.label }, v)}
+              label={<span className="text-small"><span className="font-mono text-micro text-fg-3">{o.id}</span> {o.label}</span>} />
+          </li>
+        ))}
+        {shown.length === 0 && <li className="py-1 text-small text-fg-3">없음</li>}
+      </ul>
+    </div>
+  )
+}
+
+/** 팀장 최종 승인 표시 (최종 확정보다 한 단계 위: 개발에 넘겨도 되는 산출물) */
+export function ApprovedBadge({ at, by }: { at: string; by: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-md bg-ok px-3 py-1.5 text-label font-semibold text-on-primary">
+      <SealCheck size={18} weight="fill" aria-hidden="true" />
+      최종 승인됨 <span className="font-normal tabular-nums">{by} · {formatDate(at)}</span>
+    </span>
   )
 }
 
@@ -303,12 +394,15 @@ function DdlCard({ project, version }: { project: string; version: string }) {
 }
 
 /** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 9개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
-function DevSpecFilesCard({ design, project, version, onOpen, canDecide }: {
+function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen, onChosen }: {
   design: Design
   project: string
   version: string
   onOpen: (name: string) => void
   canDecide: boolean
+  /** 팀장이 이 최종본에서 기술 스택을 골랐는지 (버전 기록 tech_stack) */
+  chosen: boolean
+  onChosen: () => void
 }) {
   const meta = design.meta.dev_spec
   return (
@@ -321,7 +415,8 @@ function DevSpecFilesCard({ design, project, version, onOpen, canDecide }: {
         </p>
       </CardHeader>
       {/* 최종 산출물 화면에서 유일하게 고칠 수 있는 것: 개발에 쓸 기술 스택 (LLM 없이 개발 스펙 9개를 다시 쓴다) */}
-      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} canDecide={canDecide} />}
+      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} canDecide={canDecide}
+        chosen={chosen} fromAnswer={meta.stack_from_answer ?? meta.stack_basis === '확정'} onChosen={onChosen} />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
           {DEV_SPEC_FILES.map((d, i) => (
@@ -351,21 +446,30 @@ function DevSpecFilesCard({ design, project, version, onOpen, canDecide }: {
  * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고
  * design.json(TQ-001 답)·버전 기록(tech_stack)에 남긴다. 원문이 정한 스택은 바꾸지 않는다.
  */
-function StackPicker({ project, version, stack, basis, canDecide }: { project: string; version: string; stack: string; basis: string; canDecide: boolean }) {
+function StackPicker({ project, version, stack, basis, canDecide, chosen, fromAnswer, onChosen }: {
+  project: string; version: string; stack: string; basis: string; canDecide: boolean
+  /** 팀장이 이 화면에서 골랐는지: 이것만 '확정'이다 (기능 명세의 TQ-001 답은 먼저 넣어 둔 값) */
+  chosen: boolean
+  /** 지금 값이 기능 명세에서 답한 값인지 (아니면 추천안) */
+  fromAnswer: boolean
+  /** 고른 뒤 버전 기록(tech_stack)을 다시 읽는다 */
+  onChosen: () => void
+}) {
   const ids = { group: useId(), custom: useId() }
   const [choices, setChoices] = useState<{ stack: string; note: string }[] | null>(null)
-  const [editing, setEditing] = useState(basis !== '확정')
+  const [editing, setEditing] = useState(!chosen)
   const [picked, setPicked] = useState(stack)
   const [custom, setCustom] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   useEffect(() => { if (basis !== '원문') getTechStacks().then(setChoices).catch(() => setChoices([])) }, [basis])
-  useEffect(() => { setEditing(basis !== '확정'); setPicked(stack) }, [stack, basis])
+  useEffect(() => { setEditing(!chosen); setPicked(stack) }, [stack, chosen])
   // 직접 적어 확정한 스택은 '직접 입력' 칸에 채워 둔다
   useEffect(() => { if (choices && !choices.some((c) => c.stack === stack)) setCustom(stack) }, [choices, stack])
 
   if (!canDecide) {   // 기술 스택은 팀장이 정한다
-    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> ({basis === '원문' ? '원문에 정해짐' : basis === '가정' ? '추천안으로 가정 — 팀장이 정합니다' : '확정'})</p>
+    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> ({basis === '원문' ? '원문에 정해짐'
+      : chosen ? '확정 — 팀장이 고름' : `팀장 선택 전 — 지금은 ${fromAnswer ? '기능 명세에서 고른 값' : '추천안'}`})</p>
   }
   if (basis === '원문') {
     return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> (원문에 정해짐)</p>
@@ -378,6 +482,7 @@ function StackPicker({ project, version, stack, basis, canDecide }: { project: s
     try {
       await setTechStack(project, version, value)
       refreshVersion(project, version)   // 개발 스펙 문서·design.json을 다시 읽는다
+      onChosen()                         // 버전 기록의 tech_stack → '확정'으로 보인다
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -397,9 +502,9 @@ function StackPicker({ project, version, stack, basis, canDecide }: { project: s
     <fieldset aria-labelledby={ids.group} className="mx-5 mb-3 space-y-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-3 text-small">
       <legend id={ids.group} className="sr-only">기술 스택 정하기</legend>
       <p className="text-warn">
-        {basis === '가정'
-          ? <>원문에 개발 언어·프레임워크가 없어 추천안(<strong>{stack}</strong>)을 가정으로 썼습니다. 개발에 쓸 스택을 골라 확정하세요 (LLM 사용 없음).</>
-          : '개발에 쓸 기술 스택을 고르세요 (LLM 사용 없음).'}
+        {chosen ? '개발에 쓸 기술 스택을 다시 고르세요 (LLM 사용 없음).'
+          : fromAnswer ? <>기능 명세에서 고른 값(<strong>{stack}</strong>)을 먼저 넣어 두었습니다. 아직 확정이 아닙니다 — 개발에 쓸 스택을 골라 '이 스택으로 확정'을 누르세요 (LLM 사용 없음).</>
+          : <>원문에 개발 언어·프레임워크가 없어 추천안(<strong>{stack}</strong>)을 가정으로 썼습니다. 개발에 쓸 스택을 골라 확정하세요 (LLM 사용 없음).</>}
       </p>
       {choices === null ? <Loading label="선택지를 불러오는 중" lines={2} /> : (
         <div className="space-y-1.5">
@@ -419,8 +524,8 @@ function StackPicker({ project, version, stack, basis, canDecide }: { project: s
       )}
       {error && <p role="alert" className="text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
-        {basis === '확정' && <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
-        <Button size="sm" variant="primary" icon={<SealCheck />} disabled={!value || saving || (basis === '확정' && value === stack)} onClick={() => void save()}>
+        {chosen && <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
+        <Button size="sm" variant="primary" icon={<SealCheck />} disabled={!value || saving || (chosen && value === stack)} onClick={() => void save()}>
           {saving ? '문서 다시 쓰는 중…' : '이 스택으로 확정'}
         </Button>
       </div>

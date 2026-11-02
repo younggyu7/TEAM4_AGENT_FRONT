@@ -47,6 +47,9 @@ export interface Member {
   permissions: Permission[]
 }
 
+/** 수정 지시가 돌려보낸 단계 (예전 기록은 target 하나) */
+export const targetsOf = (a: Approval): ('spec' | 'erd')[] => a.targets?.length ? a.targets : a.target ? [a.target] : []
+
 export async function getMe(): Promise<Member> {
   return ((await (await request('/auth/me')).json()) as { user: Member }).user
 }
@@ -84,30 +87,54 @@ export async function resetPassword(id: number, password: string): Promise<void>
 }
 
 /* ------------------------------------------------------------ 수정 초안 공유·팀장 결정 */
+type Who = { id: number; name: string; role: string }
+
+/** 변경 내역 한 묶음: 누가·언제·무엇을 (서버가 저장할 때 이전 초안과 비교해 남긴다). event: 승인 요청·취소·확정 */
+export interface DraftLogEntry {
+  by: Who
+  at: string
+  event?: 'request' | 'request_cancelled' | 'confirm'
+  changes: { target: string; label: string; what: string }[]
+}
+
+/** 파트원의 수정 완료 승인 요청 (파트장의 확정은 이것이 있어야 한다) */
+export interface ReviewRequest { by: Who; at: string; note: string }
+
 export interface ServerDraft<T> {
   state: T | null
   rev: number
   updated_at?: string
-  updated_by?: { id: number; name: string; role: string }
+  updated_by?: Who
+  log: DraftLogEntry[]
+  request: ReviewRequest | null
 }
 
 export async function getDraft<T>(project: string, version: string): Promise<ServerDraft<T>> {
   return (await (await request(`/drafts?${query({ project, version })}`)).json()) as ServerDraft<T>
 }
 
+export async function requestReview(project: string, version: string, note: string): Promise<{ request: ReviewRequest; log: DraftLogEntry[] }> {
+  return (await (await post('/drafts/request', { project, version, note })).json()) as { request: ReviewRequest; log: DraftLogEntry[] }
+}
+
 export async function saveDraft<T>(project: string, version: string, state: T, rev: number): Promise<Omit<ServerDraft<T>, 'state'>> {
   return (await (await post('/drafts', { project, version, state, rev })).json()) as Omit<ServerDraft<T>, 'state'>
 }
 
+/** 수정 지시에서 고른 항목: 어느 단계의 어느 기능·테이블을 어떻게 고칠지 */
+export interface ChangeItem { stage: 'spec' | 'erd'; target_id: string; label: string; note: string }
+
 export interface Approval {
   decision: 'approve' | 'changes'
-  target: 'spec' | 'erd' | null
+  target: 'spec' | 'erd' | null          // 예전 기록: 돌려보낸 단계 하나
+  targets?: ('spec' | 'erd')[]           // 돌려보낸 단계 (둘 다 가능)
+  items?: ChangeItem[]
   comment: string
   at: string
   by: { id: number; name: string; role: string }
 }
 
-export async function decideFinal(body: { project: string; version: string; decision: 'approve' | 'changes'; target?: 'spec' | 'erd'; comment: string }): Promise<Approval> {
+export async function decideFinal(body: { project: string; version: string; decision: 'approve' | 'changes'; targets?: ('spec' | 'erd')[]; items?: ChangeItem[]; comment: string }): Promise<Approval> {
   return ((await (await post('/projects/approval', body)).json()) as { approval: Approval }).approval
 }
 

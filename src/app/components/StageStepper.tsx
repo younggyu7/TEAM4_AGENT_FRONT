@@ -30,6 +30,7 @@ export function StageStepper({ page, version, targets, finalized, decision, onGo
   onGo: (page: Page) => void
 }) {
   const done = (id: StagePage) => Boolean(finalized[id])
+  const approved = decision?.decision === 'approve'
   const ready = (i: number) => i === 0 || done(STEPS[i - 1].id)
   return (
     <nav aria-label="진행 단계" className="mb-4">
@@ -85,17 +86,17 @@ export function StageStepper({ page, version, targets, finalized, decision, onGo
               isDocPage(page) ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
             )}
           >
-            {/* 최종 확정을 하면 최종 산출물처럼 초록 체크 (볼 산출물이 다 만들어졌다는 뜻) */}
+            {/* 팀장이 최종 승인하면 초록 체크 (ERD 최종 확정만으로는 아니다: 승인을 받아야 개발에 넘기는 산출물) */}
             <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md',
-              finalized.final ? 'bg-ok text-card' : isDocPage(page) ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
-              {finalized.final ? <Check size={14} weight="bold" /> : <Files size={14} weight="bold" />}
+              approved ? 'bg-ok text-card' : isDocPage(page) ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
+              {approved ? <Check size={14} weight="bold" /> : <Files size={14} weight="bold" />}
             </span>
             <span className="min-w-0">
               <span className={cx('block text-label', isDocPage(page) ? 'font-semibold' : 'font-medium text-fg-2')}>
                 산출물 보기 <span className="font-normal text-fg-3 tabular-nums">v{version}</span>
               </span>
-              <span className={cx('block truncate text-micro', finalized.final ? 'text-ok' : 'text-fg-3')}>
-                {finalized.final ? '최종본 산출물 준비됨 · 판단 기록·이슈·추적' : '판단 기록·이슈·추적 (보기만)'}
+              <span className={cx('block truncate text-micro', approved ? 'text-ok' : 'text-fg-3')}>
+                {approved ? `팀장 승인 ${formatDate(decision!.at)} · 판단 기록·이슈·추적` : '판단 기록·이슈·추적 (보기만)'}
               </span>
             </span>
           </button>

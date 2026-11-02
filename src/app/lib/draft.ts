@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, getDraft, saveDraft, type DispositionChoice, type Dispositions } from '../../api'
+import { ApiError, getDraft, requestReview, saveDraft, type DispositionChoice, type Dispositions, type DraftLogEntry, type ReviewRequest } from '../../api'
 import type { Attribute, Design, Entity, FunctionSpec } from '../../types'
 import { listStoreKeys, readStore, removeStore, writeStore } from './storage'
 
@@ -34,6 +34,16 @@ export const mergedEntities = (design: Design, state: DraftState): Entity[] =>
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved'
 
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+/** 원본과 똑같아진 기능·테이블은 수정 목록에서 뺀다 (고쳤다가 되돌린 것이 '저장하지 않은 수정'으로 남지 않게) */
+export function prune(design: Design, s: DraftState): DraftState {
+  const fns = Object.fromEntries(Object.entries(s.functions).filter(([id, f]) => !same(f, design.functions.find((x) => x.function_id === id))))
+  const ents = Object.fromEntries(Object.entries(s.entities).filter(([id, e]) => !same(e, design.data_model.entities.find((x) => x.entity_id === id))))
+  return Object.keys(fns).length === Object.keys(s.functions).length && Object.keys(ents).length === Object.keys(s.entities).length
+    ? s : { ...s, functions: fns, entities: ents }
+}
+
 /** 서버 초안 동기화: loading(서버에서 읽는 중) · synced(서버와 같음) · saving · conflict(다른 사람이 먼저 저장) ·
  * readonly(이 단계를 고칠 권한 없음, 서버에 쓰지 않음) · error(서버에 못 씀, 이 브라우저에만 있음) */
 export interface DraftSync {
@@ -53,16 +63,20 @@ export async function pullDraft(project: string, version: string): Promise<void>
 
 export function useDraft(design: Design, project: string, version: string, canSave = true) {
   const key = draftKey(project, version)
-  const [state, setState] = useState<DraftState>(() => readStore<DraftState>(key) ?? EMPTY)
+  const [state, setState] = useState<DraftState>(() => prune(design, readStore<DraftState>(key) ?? EMPTY))
   const [save, setSave] = useState<SaveStatus>('saved')
   const [savedAt, setSavedAt] = useState<string | undefined>(() => readStore<DraftState>(key)?.updatedAt)
   const [sync, setSync] = useState<DraftSync>({ status: 'loading' })
+  // 서버의 변경 내역(누가·언제·무엇을)과 파트원의 수정 완료 승인 요청
+  const [log, setLog] = useState<DraftLogEntry[]>([])
+  const [request, setRequest] = useState<ReviewRequest | null>(null)
   // 저장소에서 읽은 그대로인 상태는 다시 쓰지 않는다 (손대지 않은 버전이 '편집 중'으로 잡히지 않게)
   const loaded = useRef<{ key: string; state: DraftState }>({ key, state })
   const rev = useRef(0)            // 서버 초안의 rev (저장할 때 함께 보내 늦은 저장을 막는다)
   const ready = useRef(false)      // 서버 초안을 읽기 전에는 서버에 쓰지 않는다 (옛 사본으로 덮지 않게)
 
   const inflight = useRef(false)
+  const sent = useRef<DraftState | null>(null)     // 서버에 마지막으로 쓴 초안 (승인 요청 전에 남은 수정이 있는지)
   const queued = useRef<DraftState | null>(null)   // 저장 중에 또 바뀐 내용 (끝나면 새 rev로 이어서 보낸다)
   const push = useCallback((next: DraftState) => {
     if (!canSave || !ready.current) return
@@ -72,7 +86,10 @@ export function useDraft(design: Design, project: string, version: string, canSa
     saveDraft(project, version, next, rev.current)
       .then((r) => {
         rev.current = r.rev
+        sent.current = next
         setSync({ status: 'synced', by: r.updated_by?.name, at: r.updated_at })
+        setLog(r.log ?? [])
+        setRequest(r.request ?? null)
       })
       .catch((e) => {
         queued.current = null
@@ -97,22 +114,26 @@ export function useDraft(design: Design, project: string, version: string, canSa
     getDraft<DraftState>(project, version).then((server) => {
       rev.current = server.rev
       ready.current = true
+      setLog(server.log ?? [])
+      setRequest(server.request ?? null)
       const local = readStore<DraftState>(key)
       if (server.state) {
-        writeStore(key, server.state)
-        loaded.current = { key, state: server.state }
-        setState(server.state)
+        const next = prune(design, server.state)
+        writeStore(key, next)
+        sent.current = next
+        loaded.current = { key, state: next }
+        setState(next)
         setSync({ status: canSave ? 'synced' : 'readonly', by: server.updated_by?.name, at: server.updated_at })
       } else {
         setSync({ status: canSave ? 'synced' : 'readonly' })
         if (local && canSave && local.updatedAt) push(local)
       }
     }).catch((e) => { ready.current = true; setSync({ status: 'error', message: (e as Error).message }) })
-  }, [project, version, key, canSave, push])
+  }, [project, version, key, canSave, push, design])
 
   useEffect(() => {
     if (loaded.current.key !== key) {
-      const next = readStore<DraftState>(key) ?? EMPTY
+      const next = prune(design, readStore<DraftState>(key) ?? EMPTY)
       loaded.current = { key, state: next }
       setState(next)
       setSave('saved')
@@ -136,8 +157,8 @@ export function useDraft(design: Design, project: string, version: string, canSa
   // 이 단계를 고칠 권한이 없으면 편집을 받지 않는다 (서버도 막지만 화면에서 고친 것처럼 보이지 않게)
   const update = useCallback((fn: (s: DraftState) => DraftState) => {
     if (!canSave) return
-    setState((s) => ({ ...fn(s), updatedAt: new Date().toISOString() }))
-  }, [canSave])
+    setState((s) => ({ ...prune(design, fn(s)), updatedAt: new Date().toISOString() }))
+  }, [canSave, design])
 
   const functions = useMemo(() => mergedFunctions(design, state), [design, state])
   const entities = useMemo(() => mergedEntities(design, state), [design, state])
@@ -239,6 +260,23 @@ export function useDraft(design: Design, project: string, version: string, canSa
     sync,
     reloadServer: pull,
     readOnly: !canSave,
+    log,
+    request,
+    /** 기능·테이블 ID → 마지막으로 고친 사람 (변경 내역에서) */
+    editors: Object.fromEntries(log.flatMap((e) => e.changes.filter((c) => c.target).map((c) => [c.target, e.by.name]))) as Record<string, string>,
+    /** 파트원: 수정 완료 승인 요청 (지금 초안을 먼저 서버에 쓰고 요청) */
+    requestReview: async (note: string) => {
+      // 아직 서버에 안 쓴 수정이 있으면 먼저 쓴다 (요청 뒤에 저장되면 '요청 뒤 수정'으로 요청이 취소된다)
+      for (let i = 0; inflight.current && i < 50; i++) await new Promise((ok) => window.setTimeout(ok, 100))
+      if (canSave && state !== sent.current && state !== loaded.current.state) {
+        const saved = await saveDraft(project, version, state, rev.current)
+        rev.current = saved.rev
+        sent.current = state
+      }
+      const r = await requestReview(project, version, note)
+      setRequest(r.request)
+      setLog(r.log)
+    },
     saveNow,
     functions,
     entities,

@@ -154,7 +154,9 @@ export function VersionGraph({ project, version, navigate, onReloadProjects }: {
                   >
                     <span className="flex items-center gap-1.5">
                       <span className={cx('text-label tabular-nums', current ? 'font-semibold' : 'text-fg-2')}>v{v.design_version}</span>
-                      {v.db_validation && <Badge tone={v.db_validation === 'PASSED' ? 'ok' : 'danger'}>DB {v.db_validation === 'PASSED' ? '통과' : '실패'}</Badge>}
+                      {v.approval?.decision === 'approve' ? <Badge tone="ok">승인</Badge>
+                        : v.approval?.decision === 'changes' ? <Badge tone="warn">수정 지시</Badge>
+                        : v.db_validation && <Badge tone={v.db_validation === 'PASSED' ? 'ok' : 'danger'}>DB {v.db_validation === 'PASSED' ? '통과' : '실패'}</Badge>}
                     </span>
                     <span className="block truncate text-micro text-fg-3">
                       {[v.title, formatDate(v.created_at)].filter(Boolean).join(' · ') || '날짜 없음'}

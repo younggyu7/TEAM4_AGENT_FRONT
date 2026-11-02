@@ -138,7 +138,7 @@ export interface Design {
     document: { document_id: string; document_version: string; file_name: string }
     generated_at: string
     /** 개발 스펙 문서 (데이터 설계 버전에만): 형식, 파일, 기술 스택과 그 근거(원문·확정·가정) */
-    dev_spec?: { format: string; files: string[]; stack: string; stack_basis: '원문' | '확정' | '가정' | '없음' }
+    dev_spec?: { format: string; files: string[]; stack: string; stack_basis: '원문' | '확정' | '가정' | '없음'; stack_from_answer?: boolean }
   }
   requirements: Requirement[]
   questions: Question[]
@@ -164,6 +164,8 @@ export interface VersionRecord {
   summary?: string[]
   db_validation?: string
   db_engine?: string
+  /** 팀장이 최종 산출물 화면에서 고른 기술 스택 (이것이 있어야 '확정') */
+  tech_stack?: { stack: string; basis: string }
   /** 화면 요청으로 만든 사람 */
   created_by?: { id: number; name: string; role: string }
   /** 최종본: 팀장의 마지막 결정(승인·수정 지시)과 그 기록 */
