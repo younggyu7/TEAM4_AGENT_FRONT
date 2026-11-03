@@ -7,7 +7,7 @@ import { DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
 import { useFile, useSpecFormat } from '../lib/data'
 import type { Page } from '../lib/route'
 
-// 산출물 보기 → 개발 스펙: 'ERD 최종 확정'으로 만든 최종본에 생긴 개발 AI용 문서 9개를 읽는 순서대로 보여 주고,
+// 산출물 보기 → 개발 스펙: 'ERD 최종 확정'으로 만든 최종본에 생긴 개발 AI용 문서 10개를 읽는 순서대로 보여 주고,
 // 그 문서들의 형식 정의(backend/SPEC_FORMAT.md)도 같은 자리에서 본다. 문서를 고르면 주소(#/…/dev-spec/<파일>)에 남는다.
 
 const FORMAT = 'SPEC_FORMAT.md'
@@ -131,7 +131,7 @@ function FormatDoc() {
   return (
     <>
       <p className="mb-3 border-b border-line pb-3 text-small text-fg-3">
-        개발 스펙 문서 9개는 이 형식대로 코드가 만듭니다 (같은 입력이면 같은 문서). 형식을 바꾸면 번호가 올라갑니다.
+        개발 스펙 문서 10개는 이 형식대로 코드가 만듭니다 (같은 입력이면 같은 문서). 형식을 바꾸면 번호가 올라갑니다.
       </p>
       <Markdown text={doc.data} idPrefix="spec-format" toc />
     </>

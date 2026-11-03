@@ -234,7 +234,7 @@ export async function getTechStacks(): Promise<{ stack: string; note: string }[]
   return ((await (await request('/tech-stacks')).json()) as { choices: { stack: string; note: string }[] }).choices
 }
 
-/** 최종본의 기술 스택 확정: 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고 design.json·버전 기록에 남긴다 */
+/** 최종본의 기술 스택 확정: 백엔드가 LLM 없이 개발 스펙 10개를 다시 쓰고 design.json·버전 기록에 남긴다 */
 export async function setTechStack(project: string, version: string, stack: string): Promise<void> {
   await post('/projects/tech-stack', { project, version, stack })
 }
