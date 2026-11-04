@@ -123,7 +123,7 @@ export function specReview(design: Design, functions: FunctionSpec[], draft: Dra
       requirement && q.requirement_ids.length ? `관련 요구사항: ${q.requirement_ids.join(', ')}` : '',
       q.recommended ? `지금 초안은 추천안 '${q.recommended}'을(를) 가정해 만들었습니다.` : '',
       // 내보낼 때 코드는 표시가 붙은 규칙만 답으로 바꾼다. 흐름·입력·데이터 등 다른 칸은 사람이 확인한다
-      isStackQuestion(q) ? '답은 \'ERD 최종 확정\' 때 만드는 개발 스펙(AGENTS·ARCHITECTURE·TASKS)에만 쓰입니다. 기능 명세·ERD는 바뀌지 않습니다 (LLM 사용 없음).' : '',
+      isStackQuestion(q) ? '화면·서버·DB를 하나씩 고릅니다. 기능 명세를 확정하면 스택도 확정되어 개발 스펙과 최종 개발하기에 쓰입니다. 기능 명세·ERD는 바뀌지 않습니다 (LLM 사용 없음).' : '',
       differs && !isStackQuestion(q) ? `⚠ 추천안과 다른 답입니다. 내보낼 때 해당 규칙은 이 답으로 바뀝니다. 관련 기능의 흐름·입력·데이터도 확인하세요 (필요하면 오른쪽 위 'AI로 답 반영').` : '',
     ].filter(Boolean)
     items.push({

@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, BellSimple, CheckCircle, CircleNotch, FloppyDisk, LockSimple, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, FloppyDisk, LockSimple, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDate } from '../../labels'
 import type { Design, VersionRecord } from '../../types'
@@ -7,9 +7,9 @@ import { PageHeader } from '../components/PageHeader'
 import { SaveVersionDialog } from '../components/SaveVersionDialog'
 import { Shell, type ShellBase } from '../components/Shell'
 import { StageStepper } from '../components/StageStepper'
-import { getDirectives, getNotices, type Directive, type Notice } from '../../api'
+import { getDirectives, type Directive } from '../../api'
 import { DIRECTIVES_CHANGED } from '../components/ReviewPanel'
-import { Button, Card, cx, ErrorNote, Loading } from '../components/ui'
+import { Button, Card, ErrorNote, Loading } from '../components/ui'
 import { useDesign } from '../lib/data'
 import { mergedEntities, mergedFunctions, pullDraft, readDraft, useDraft, type ConfirmStage, type Draft, type DraftState, type DraftSync, type SaveStatus } from '../lib/draft'
 import { can, NEEDS } from '../lib/session'
@@ -18,7 +18,9 @@ import { specOf, stageTargets } from '../lib/versions'
 import { JobPanel } from '../components/JobPanel'
 import { startReviewJob, useJob } from '../lib/jobs'
 import { directiveItems, erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
-import { isDocPage, PAGE_LABEL, type Page, type Route, type StagePage } from '../lib/route'
+import { isDocPage, PAGE_LABEL, type Page, type Route } from '../lib/route'
+import { StackNote } from '../components/StackChoice'
+import { DevelopView } from './Develop'
 import { DocsView } from './Docs'
 import { ErdEditor } from './Erd'
 import { FinalView } from './Final'
@@ -57,14 +59,12 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     specEdit: can(me, 'spec_edit'), specConfirm: can(me, 'spec_confirm'),
     erdEdit: can(me, 'erd_edit'), erdConfirm: can(me, 'erd_confirm'), final: can(me, 'final_decide'),
   }
-  // 팀장 수정 지시의 진행(서버가 계산)과 나에게 온 알림. 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다
+  // 팀장 수정 지시의 진행(서버가 계산). 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다 (알림은 왼쪽 사이드바)
   const allVersions = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project)?.versions ?? [] : []
   const [directives, setDirectives] = useState<Directive[]>([])
-  const [notices, setNotices] = useState<Notice[]>([])
   useEffect(() => {
     const load = () => {
       getDirectives(route.project).then(setDirectives).catch(() => setDirectives([]))
-      getNotices().then((list) => setNotices(list.filter((n) => n.project === route.project))).catch(() => setNotices([]))
     }
     load()
     window.addEventListener(DIRECTIVES_CHANGED, load)
@@ -91,7 +91,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   // 단계마다 그 단계 번호의 버전을 연다 (기능 명세 v2 → ERD v2.1 → 최종 v2.1.1)
   const targets = stageTargets(versions, route.version)
   const open = (page: Page, focus?: string) =>
-    shell.navigate({ ...route, page, focus, version: isDocPage(page) ? route.version : targets[page as StagePage] })
+    shell.navigate({ ...route, page, focus, version: isDocPage(page) ? route.version : page === 'develop' ? targets.final : targets[page] })
   // 오른쪽 진행 상황: 단계마다 그 단계 버전(기능 명세 v1, ERD v1.2)의 확인 항목으로 센다
   // (체크는 버전별로 저장되므로 지금 버전으로 세면 ERD·최종 화면에서 기능 명세가 0으로 보인다)
   // 다른 단계 버전(기능 명세 v1·ERD v1.2)의 초안은 서버에서 받아 센다 (다른 회원이 고친 것도)
@@ -173,6 +173,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   // 다른 버전(예: ERD)을 열 때마다 다시 새 버전으로 끌려간다.
   useEffect(() => {
     if (myJob?.status !== 'done' || !myJob.new_version || autoOpened.has(myJob.id)) return
+    if (myJob.source === 'develop' || myJob.source === 'git') return   // 새 설계 버전이 아니다 (화면 그대로)
     const page = myJob.source === 'answers' ? 'spec' : myJob.source === 'review' ? 'final' : 'erd'
     if (route.page !== page && !(page === 'final' && route.page === 'erd')) return
     autoOpened.add(myJob.id)
@@ -201,8 +202,13 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
             canDecide={perm.final} onDecided={shell.onReloadProjects}
             previous={versions.filter((v) => v.stage === 'final' && v.design_version !== route.version && v.approval?.decision === 'changes'
               && v.approval.at < (record?.created_at ?? '')).sort((a, b) => b.approval!.at.localeCompare(a.approval!.at))[0]} />
+        : route.page === 'develop'
+          ? <DevelopView project={route.project} record={finalRecord} user={shell.user} step={route.focus}
+              job={myJob?.source === 'develop' || myJob?.source === 'git' ? myJob : undefined}
+              onStep={(step) => shell.navigate({ ...route, focus: step }, true)} onOpenDocs={() => open('overview')} onFinished={shell.onReloadProjects} />
         : <DocsView page={route.page} design={draft.merged} saved={design} project={route.project} version={route.version}
-            versionRecord={record} versions={versions} finalizedAt={finalized.final} focus={route.focus} onOpen={open} />
+            versionRecord={record} versions={versions} finalizedAt={finalized.final} focus={route.focus} onOpen={open}
+            user={shell.user} onReloadProjects={shell.onReloadProjects} />
 
   // 기능 명세 버튼은 내보내기 전후가 같다: 내보낸 뒤 고친 것도 다시 내보내 최신 ERD에 이어서 반영한다
   const actions = route.page === 'spec' ? (
@@ -285,24 +291,10 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     >
       <p className="sr-only">v{route.version} · {formatDate(design.meta.generated_at)} 생성</p>
       <StageStepper page={route.page} version={route.version} targets={targets} finalized={finalized}
-        decision={finalRecord?.approval} onGo={(p) => open(p)} />
-      {/* 나에게 온 알림 (이 프로젝트, 내 역할): 수정 지시·기능 명세 대기·승인 요청·승인 대기 */}
-      {notices.length > 0 && (
-        <ul aria-label="알림" className="mb-4 space-y-1">
-          {notices.map((n, i) => (
-            <li key={i}>
-              <button type="button" onClick={() => shell.navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })}
-                className={cx('flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-3 py-1.5 text-left text-small hover:opacity-85',
-                  n.kind === 'waiting' ? 'bg-sunken text-fg-2' : n.kind === 'request' || n.kind === 'decide' ? 'bg-info-soft text-info' : 'bg-warn-soft text-warn')}>
-                <BellSimple size={14} aria-hidden="true" />
-                <span className="font-medium">{n.title}</span>
-                {n.detail && <span className="text-fg-3">{n.detail}</span>}
-                <span className="ml-auto text-micro text-fg-3 tabular-nums">{formatDate(n.at)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        decision={finalRecord?.approval} onGo={(p) => open(p)}
+        developed={{ at: finalRecord?.develop?.at }} />
+      {/* 기술 스택: 원문이 정했으면 그대로 따르고, 개발 틀이 없는 스택이면 여기서부터 알린다 (고르는 건 확인 질문 TQ-001) */}
+      {route.page === 'spec' && <StackNote project={route.project} version={route.version} hideWhenPending className="mb-4" />}
       {lockReason && (
         <p role="note" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-line-strong bg-sunken px-4 py-3 text-label text-fg-2">
           <LockSimple size={18} aria-hidden="true" />
@@ -310,7 +302,8 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           {lockedBy?.erd_version && <Button size="sm" icon={<ArrowRight />} onClick={() => shell.navigate({ ...route, version: lockedBy.erd_version!, focus: undefined })}>새 ERD v{lockedBy.erd_version} 열기</Button>}
         </p>
       )}
-      {myJob && (route.page === 'erd' || (route.page === 'spec' && myJob.source === 'answers') || (route.page === 'final' && myJob.source === 'review'))
+      {myJob && (route.page === 'erd' || (route.page === 'spec' && myJob.source === 'answers') || (route.page === 'final' && myJob.source === 'review')
+        || ((myJob.source === 'develop' || myJob.source === 'git') && (isDocPage(route.page) || route.page === 'final')))
         && <JobPanel job={myJob} project={route.project} onOpen={openJobVersion} current={route.version} />}
       {approvedFinal && (route.page === 'spec' || route.page === 'erd') && (
         <p role="status" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-ok/40 bg-ok-soft px-4 py-3 text-label text-ok">

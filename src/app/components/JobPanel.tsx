@@ -30,7 +30,7 @@ export function JobPanel({ job, project, onOpen, current }: {
     <Card aria-labelledby="job-title" className={cx('mb-4 border-2', tone)}>
       <div className="flex items-start justify-between gap-3 px-5 pt-4">
         <div className="min-w-0">
-          <p className="eyebrow">{job.source === 'run' ? 'Upload · 원본 요구서 → 요구사항·기능 명세 초안' : job.source === 'answers' ? 'Answers · 확인 질문 답 → 기능 명세' : job.source === 'spec' ? 'Export · 기능 명세 → ERD' : job.source === 'review' ? 'Final · ERD 최종 확정 → 최종본' : 'New version · ERD'}</p>
+          <p className="eyebrow">{job.source === 'run' ? 'Upload · 원본 요구서 → 요구사항·기능 명세 초안' : job.source === 'answers' ? 'Answers · 확인 질문 답 → 기능 명세' : job.source === 'spec' ? 'Export · 기능 명세 → ERD' : job.source === 'review' ? 'Final · ERD 최종 확정 → 최종본' : job.source === 'develop' ? 'Develop · 최종본 → 서비스 코드·미리보기' : job.source === 'git' ? 'Git · 서버 코드 → 화면·백엔드 저장소' : 'New version · ERD'}</p>
           <h2 id="job-title" role="status" className={cx('mt-1 flex items-center gap-2 text-subtitle font-medium',
             job.status === 'failed' && 'text-danger', warn && 'text-warn', job.status === 'done' && !warn && 'text-ok')}>
             {running && <CircleNotch size={20} className="animate-spin" aria-hidden="true" />}
@@ -44,6 +44,10 @@ export function JobPanel({ job, project, onOpen, current }: {
                 ? 'Agent가 문서 분석 → 요구사항 추출·검토 → 기능 명세 초안까지 만듭니다 (문서 크기에 따라 수 분~수십 분). 확인 질문은 추천안으로 가정하고, 끝나면 화면에서 확인·수정한 뒤 ERD를 만듭니다.'
                 : job.source === 'review'
                 ? '확정한 ERD로 최종본을 만듭니다: 지적 처리 기록 → DDL 검증·추적 검토(코드) → API 설계(바뀐 기능만, 개발 스펙 문서 10개). DDL에 오류가 있으면 최종본을 만들지 않습니다. 끝나면 최종본이 열립니다.'
+                : job.source === 'develop'
+                ? '개발 스펙으로 화면·API·DB 코드를 만들고(AI 업무 로직은 고른 경우만) 예시 데이터 화면을 빌드합니다. 처음에는 화면 패키지 설치로 1분쯤 걸립니다. 끝나면 위 단계 표시줄의 \'최종 개발물 미리보기\'로 봅니다.'
+                : job.source === 'git'
+                ? '서버의 코드 폴더를 화면·백엔드 저장소에 커밋·push합니다 (LLM 없음).'
                 : job.source === 'answers'
                 ? 'Agent가 답을 반영하고(분류·결정), 충돌을 다시 확인한 뒤 바뀐 기능만 다시 설계합니다. 끝나면 새 기능 명세 버전이 열립니다.'
                 : 'Agent가 데이터 설계·검증·DDL을 만들고, 의미 검토로 빠진 데이터를 찾아 한 번 고칩니다 (사람이 고친 ERD만 저장하면 다시 검토하지 않음). 다른 화면으로 가도 계속 실행되고, 끝나면 새 ERD 버전이 열립니다.'}
@@ -83,7 +87,7 @@ export function JobPanel({ job, project, onOpen, current }: {
             </Button>
           </div>
         )}
-        {job.status === 'done' && job.new_version && job.source !== 'review' && !opened && (
+        {job.status === 'done' && job.new_version && job.source !== 'review' && job.source !== 'develop' && job.source !== 'git' && !opened && (
           <div className="flex justify-end">
             <Button variant="primary" icon={<ArrowRight />} onClick={() => onOpen(job.new_version!)}>{job.source === 'answers' || job.source === 'run' ? '기능 명세' : 'ERD'} v{job.new_version} 열기</Button>
           </div>

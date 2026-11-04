@@ -46,3 +46,9 @@ export function shortModel(model: string): string {
 export function usd(n: number): string {
   return n < 0.01 ? `$${n.toFixed(4)}` : n < 100 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString('en-US')}`
 }
+
+/** 예상 비용(USD): 입력·출력 토큰과 모델 단가. 단가를 모르면 undefined */
+export function estimateUsd(model: string | undefined, input: number, output: number): number | undefined {
+  const p = priceOf(model)
+  return p ? (input * p.input + output * p.output) / 1_000_000 : undefined
+}

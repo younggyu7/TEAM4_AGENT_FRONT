@@ -31,6 +31,8 @@
   --ok-soft: #e5f5ec;
   --info: #1d5fb8;
   --info-soft: #e8f0fb;
+  --ai: #6b3fc8;            /* AI가 쓴 코드 표시 (최종 개발물 코드 보기) */
+  --ai-soft: #f1ebfc;
 
   /* 차트 계열색 (dataviz 검증 통과: 명도·채도·CVD·대비) */
   --series-1: #2a78d6;
@@ -63,6 +65,8 @@
     --ok-soft: #0f2a1d;
     --info: #6aa5f0;
     --info-soft: #132540;
+    --ai: #b79cf5;
+    --ai-soft: #251a3d;
     --series-1: #3987e5;
     --series-2: #e04fbd;   /* CVD ΔE 7.5: 범례·간격·표 보기를 같이 둔다 */
     color-scheme: dark;
@@ -93,6 +97,8 @@
   --color-ok-soft: var(--ok-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
   --color-series-1: var(--series-1);
   --color-series-2: var(--series-2);
 }

@@ -6,7 +6,9 @@ export type EditPage = 'spec' | 'erd'
 export type StagePage = EditPage | 'final'
 /** 산출물을 읽기만 하는 화면 (예전 viewer.html의 탭) */
 export type DocPage = 'overview' | 'requirements' | 'questions' | 'final-erd' | 'ddl' | 'dev-spec' | 'trace' | 'issues' | 'decisions'
-export type Page = StagePage | DocPage
+/** 최종 개발물: 팀장이 승인한 최종본의 개발 상태·실행 미리보기·git */
+export type DevelopPage = 'develop'
+export type Page = StagePage | DocPage | DevelopPage
 
 export const DOC_PAGES: { id: DocPage; label: string }[] = [
   { id: 'overview', label: '개요' },
@@ -24,10 +26,11 @@ export const PAGE_LABEL: Record<Page, string> = {
   spec: '기능 명세서',
   erd: 'ERD',
   final: '최종 산출물',
+  develop: '최종 개발물',
   ...Object.fromEntries(DOC_PAGES.map((p) => [p.id, p.label])) as Record<DocPage, string>,
 }
 
-export const isDocPage = (p: Page): p is DocPage => p !== 'spec' && p !== 'erd' && p !== 'final'
+export const isDocPage = (p: Page): p is DocPage => p !== 'spec' && p !== 'erd' && p !== 'final' && p !== 'develop'
 const isPage = (p: string | undefined): p is Page => p !== undefined && p in PAGE_LABEL
 
 export type Route =

@@ -18,6 +18,8 @@ export const NEEDS: Record<Permission, string> = {
   erd_edit: 'ERD 수정은 데이터 파트원·데이터 파트장·팀장만 할 수 있습니다',
   erd_confirm: 'ERD 최종 확정은 데이터 파트장·팀장만 할 수 있습니다',
   final_decide: '최종 승인·수정 지시와 기술 스택은 팀장만 정할 수 있습니다',
+  develop: '최종 개발하기·실행 끄기·git 올리기는 개발 파트장만 할 수 있습니다',
+  code_edit: '최종 개발물 코드 고치기는 개발 파트원·개발 파트장·팀장만 할 수 있습니다',
 }
 
 export function useSession() {

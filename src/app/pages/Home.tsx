@@ -1,6 +1,7 @@
 import { ArrowRight, FileText, TreeStructure, UploadSimple } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { getLlmOptions, getNotices, type LlmOptions, type Notice } from '../../api'
+import { getLlmOptions, type LlmOptions } from '../../api'
+import { NoticeItem, useNotices } from '../components/Notices'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
 import { HomeInsights } from '../components/Insights'
@@ -120,14 +121,9 @@ export function Home({ shell }: { shell: ShellBase }) {
   )
 }
 
-/** 나에게 온 알림 (내 역할 기준, 모든 프로젝트): 수정 지시·기능 명세 대기·승인 요청·승인 대기. 누르면 그 화면으로 */
+/** 나에게 온 알림 전체 (내 역할 기준, 모든 프로젝트): 상태 알림 + 일 알림. 누르면 그 화면으로, '확인'을 누르면 사라진다 */
 function NoticesCard({ navigate, reloadKey }: { navigate: ShellBase['navigate']; reloadKey: unknown }) {
-  const [list, setList] = useState<Notice[] | null>(null)
-  useEffect(() => { getNotices().then(setList).catch(() => setList([])) }, [reloadKey])
-  const KIND: Record<Notice['kind'], { tone: Tone; label: string }> = {
-    directive: { tone: 'warn', label: '수정 지시' }, waiting: { tone: 'neutral', label: '대기' },
-    request: { tone: 'info', label: '승인 요청' }, decide: { tone: 'info', label: '승인 대기' },
-  }
+  const { list, dismiss } = useNotices(reloadKey)
   return (
     <Card aria-labelledby="my-notices">
       <CardHeader eyebrow="Notices" title="나에게 온 알림" titleId="my-notices"
@@ -135,20 +131,8 @@ function NoticesCard({ navigate, reloadKey }: { navigate: ShellBase['navigate'];
       {list === null ? <Loading label="알림을 불러오는 중" lines={2} /> : list.length === 0 ? (
         <p className="px-5 pb-5 text-small text-fg-3">새 알림이 없습니다.</p>
       ) : (
-        <ul className="divide-y divide-line px-2 pb-2">
-          {list.slice(0, 10).map((n, i) => (
-            <li key={i}>
-              <button type="button" onClick={() => navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left hover:bg-sunken">
-                <Badge tone={KIND[n.kind].tone}>{KIND[n.kind].label}</Badge>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-label font-medium">{n.title}</span>
-                  <span className="block truncate text-small text-fg-3">{n.project}{n.detail ? ` · ${n.detail}` : ''}</span>
-                </span>
-                <span className="shrink-0 text-micro text-fg-3 tabular-nums">{formatDate(n.at)}</span>
-              </button>
-            </li>
-          ))}
+        <ul className="max-h-[28rem] divide-y divide-line overflow-y-auto px-2 pb-2">
+          {list.map((n) => <NoticeItem key={`${n.project}:${n.id}`} n={n} navigate={navigate} onDismiss={dismiss} showProject />)}
         </ul>
       )}
     </Card>

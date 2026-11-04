@@ -3,7 +3,8 @@ import { useId, useMemo, useState } from 'react'
 import { resolveDirective, type DispositionChoice } from '../../api'
 import { formatDate } from '../../labels'
 import type { Draft } from '../lib/draft'
-import { KIND_LABEL, remarkDisposition, summarize, type ReviewItem, type ReviewKind } from '../lib/review'
+import { isStackQuestion, KIND_LABEL, remarkDisposition, summarize, type ReviewItem, type ReviewKind } from '../lib/review'
+import { StackAnswer } from './StackChoice'
 import { Badge, Button, Checkbox, cx, Empty, fmt, Segmented, TextInput } from './ui'
 
 type Filter = 'all' | 'required' | ReviewKind
@@ -284,6 +285,8 @@ function QuestionAnswer({ item, draft }: { item: ReviewItem; draft: Draft }) {
   const answer = draft.state.answers[q.question_id] ?? ''
   const isOption = q.options.includes(answer)
   const inputId = useId()
+  // 기술 스택(TQ-001)은 화면·서버·DB를 하나씩 고른다
+  if (isStackQuestion(q)) return <StackAnswer value={answer} onChange={(stack) => draft.setAnswer(q.question_id, stack)} />
   return (
     <fieldset className="mt-3">
       <legend className="sr-only">답 고르기</legend>

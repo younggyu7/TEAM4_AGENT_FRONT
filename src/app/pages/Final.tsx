@@ -1,9 +1,10 @@
 import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useState } from 'react'
-import { decideFinal, getTechStacks, setTechStack, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
+import { decideFinal, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
+import { StackNote } from '../components/StackChoice'
 import { ZipButton } from '../components/ZipButton'
 import { ARTIFACT_FILES, DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
 import { refreshVersion, useFile } from '../lib/data'
@@ -87,8 +88,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         <FileList project={project} version={version} files={ARTIFACT_FILES} />
       </Card>
 
-      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canDecide={canDecide}
-        chosen={record?.tech_stack?.basis === '확정'} onChosen={onDecided} />
+      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} />
     </div>
   )
 }
@@ -431,15 +431,11 @@ function DdlCard({ project, version }: { project: string; version: string }) {
 }
 
 /** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 10개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
-function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen, onChosen }: {
+function DevSpecFilesCard({ design, project, version, onOpen }: {
   design: Design
   project: string
   version: string
   onOpen: (name: string) => void
-  canDecide: boolean
-  /** 팀장이 이 최종본에서 기술 스택을 골랐는지 (버전 기록 tech_stack) */
-  chosen: boolean
-  onChosen: () => void
 }) {
   const meta = design.meta.dev_spec
   return (
@@ -451,9 +447,8 @@ function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen,
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
-      {/* 최종 산출물 화면에서 유일하게 고칠 수 있는 것: 개발에 쓸 기술 스택 (LLM 없이 개발 스펙 10개를 다시 쓴다) */}
-      {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} canDecide={canDecide}
-        chosen={chosen} fromAnswer={meta.stack_from_answer ?? meta.stack_basis === '확정'} onChosen={onChosen} />}
+      {/* 기술 스택은 기능 명세에서 확정한다 (원문이 정했으면 원문). 여기서는 보기만 */}
+      {meta && <StackNote project={project} version={version} className="mx-5 mb-3" />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
           {DEV_SPEC_FILES.map((d, i) => (
@@ -476,97 +471,6 @@ function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen,
         </ol>
       )}
     </Card>
-  )
-}
-
-/**
- * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 10개를 다시 쓰고
- * design.json(TQ-001 답)·버전 기록(tech_stack)에 남긴다. 원문이 정한 스택은 바꾸지 않는다.
- */
-function StackPicker({ project, version, stack, basis, canDecide, chosen, fromAnswer, onChosen }: {
-  project: string; version: string; stack: string; basis: string; canDecide: boolean
-  /** 팀장이 이 화면에서 골랐는지: 이것만 '확정'이다 (기능 명세의 TQ-001 답은 먼저 넣어 둔 값) */
-  chosen: boolean
-  /** 지금 값이 기능 명세에서 답한 값인지 (아니면 추천안) */
-  fromAnswer: boolean
-  /** 고른 뒤 버전 기록(tech_stack)을 다시 읽는다 */
-  onChosen: () => void
-}) {
-  const ids = { group: useId(), custom: useId() }
-  const [choices, setChoices] = useState<{ stack: string; note: string }[] | null>(null)
-  const [editing, setEditing] = useState(!chosen)
-  const [picked, setPicked] = useState(stack)
-  const [custom, setCustom] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  useEffect(() => { if (basis !== '원문') getTechStacks().then(setChoices).catch(() => setChoices([])) }, [basis])
-  useEffect(() => { setEditing(!chosen); setPicked(stack) }, [stack, chosen])
-  // 직접 적어 확정한 스택은 '직접 입력' 칸에 채워 둔다
-  useEffect(() => { if (choices && !choices.some((c) => c.stack === stack)) setCustom(stack) }, [choices, stack])
-
-  if (!canDecide) {   // 기술 스택은 팀장이 정한다
-    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> ({basis === '원문' ? '원문에 정해짐'
-      : chosen ? '확정 — 팀장이 고름' : `팀장 선택 전 — 지금은 ${fromAnswer ? '기능 명세에서 고른 값' : '추천안'}`})</p>
-  }
-  if (basis === '원문') {
-    return <p className="mx-5 mb-3 rounded-md bg-sunken px-3 py-2 text-small">기술 스택: <strong>{stack}</strong> (원문에 정해짐)</p>
-  }
-  const isCustom = picked === '' || !(choices ?? []).some((c) => c.stack === picked)
-  const value = (isCustom ? custom : picked).trim()
-  const save = async () => {
-    setSaving(true)
-    setError('')
-    try {
-      await setTechStack(project, version, value)
-      refreshVersion(project, version)   // 개발 스펙 문서·design.json을 다시 읽는다
-      onChosen()                         // 버전 기록의 tech_stack → '확정'으로 보인다
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
-  }
-  if (!editing) {
-    return (
-      <div className="mx-5 mb-3 flex flex-wrap items-center gap-2 rounded-md bg-ok-soft px-3 py-2 text-small">
-        <SealCheck size={16} className="text-ok" aria-hidden="true" />
-        <span className="min-w-0 flex-1">기술 스택: <strong>{stack}</strong> (확정 — 개발 스펙 문서에 이 값이 들어 있습니다)</span>
-        <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>바꾸기</Button>
-      </div>
-    )
-  }
-  return (
-    <fieldset aria-labelledby={ids.group} className="mx-5 mb-3 space-y-2 rounded-md border border-warn/40 bg-warn-soft px-3 py-3 text-small">
-      <legend id={ids.group} className="sr-only">기술 스택 정하기</legend>
-      <p className="text-warn">
-        {chosen ? '개발에 쓸 기술 스택을 다시 고르세요 (LLM 사용 없음).'
-          : fromAnswer ? <>기능 명세에서 고른 값(<strong>{stack}</strong>)을 먼저 넣어 두었습니다. 아직 확정이 아닙니다 — 개발에 쓸 스택을 골라 '이 스택으로 확정'을 누르세요 (LLM 사용 없음).</>
-          : <>원문에 개발 언어·프레임워크가 없어 추천안(<strong>{stack}</strong>)을 가정으로 썼습니다. 개발에 쓸 스택을 골라 확정하세요 (LLM 사용 없음).</>}
-      </p>
-      {choices === null ? <Loading label="선택지를 불러오는 중" lines={2} /> : (
-        <div className="space-y-1.5">
-          {choices.map((c, i) => (
-            <label key={c.stack} className="flex cursor-pointer items-start gap-2 rounded-md bg-card px-2.5 py-1.5">
-              <input type="radio" name={ids.group} className="mt-1" checked={picked === c.stack} onChange={() => setPicked(c.stack)} />
-              <span><strong>{c.stack}</strong>{i === 0 && <Badge tone="info" className="ml-1.5">추천</Badge>}<span className="block text-micro text-fg-3">{c.note}</span></span>
-            </label>
-          ))}
-          <label className="flex cursor-pointer items-center gap-2 rounded-md bg-card px-2.5 py-1.5">
-            <input type="radio" name={ids.group} checked={isCustom} onChange={() => setPicked('')} />
-            <span className="shrink-0">직접 입력</span>
-            <TextInput id={ids.custom} dense value={custom} maxLength={200} placeholder="예: Go 1.23 · Gin · PostgreSQL 16"
-              aria-label="기술 스택 직접 입력" onFocus={() => setPicked('')} onChange={(e) => setCustom(e.target.value)} />
-          </label>
-        </div>
-      )}
-      {error && <p role="alert" className="text-danger">{error}</p>}
-      <div className="flex justify-end gap-2">
-        {chosen && <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
-        <Button size="sm" variant="primary" icon={<SealCheck />} disabled={!value || saving || (chosen && value === stack)} onClick={() => void save()}>
-          {saving ? '문서 다시 쓰는 중…' : '이 스택으로 확정'}
-        </Button>
-      </div>
-    </fieldset>
   )
 }
 

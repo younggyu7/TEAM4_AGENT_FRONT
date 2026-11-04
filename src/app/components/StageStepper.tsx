@@ -1,4 +1,4 @@
-import { Check, Files } from '@phosphor-icons/react'
+import { Check, Files, Play } from '@phosphor-icons/react'
 import { formatDate } from '../../labels'
 import { isDocPage, type Page, type StagePage } from '../lib/route'
 import { cx } from './ui'
@@ -20,7 +20,7 @@ function versionLabel(stage: StagePage, t: Record<StagePage, string>): string {
 
 /** 이 버전의 진행 단계. 앞 단계를 확정해야 다음 단계가 '진행 가능'으로 바뀌지만, 보기는 언제든 할 수 있다.
  * 맨 끝 '산출물 보기'는 단계가 아니라 지금 버전의 산출물(판단 기록·이슈·추적 …)을 읽기만 하는 화면이다. */
-export function StageStepper({ page, version, targets, finalized, decision, onGo }: {
+export function StageStepper({ page, version, targets, finalized, decision, onGo, developed }: {
   page: Page
   version: string                      // 산출물 보기가 여는 버전 (지금 보는 버전)
   targets: Record<StagePage, string>   // 각 단계에서 열 버전 (v2 / v2.1 / v2.1.1)
@@ -28,13 +28,15 @@ export function StageStepper({ page, version, targets, finalized, decision, onGo
   /** 최종본에 대한 팀장의 마지막 결정 */
   decision?: { decision: 'approve' | 'changes'; at: string }
   onGo: (page: Page) => void
+  /** 마지막 칸 '최종 개발물 미리보기': 팀장이 승인하면(= 최종 개발하기를 누를 수 있으면) 열린다. at은 개발한 때 */
+  developed?: { at?: string }
 }) {
   const done = (id: StagePage) => Boolean(finalized[id])
   const approved = decision?.decision === 'approve'
   const ready = (i: number) => i === 0 || done(STEPS[i - 1].id)
   return (
     <nav aria-label="진행 단계" className="mb-4">
-      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
         {STEPS.map((s, i) => {
           const current = s.id === page
           const isDone = done(s.id)
@@ -97,6 +99,31 @@ export function StageStepper({ page, version, targets, finalized, decision, onGo
               </span>
               <span className={cx('block truncate text-micro', approved ? 'text-ok' : 'text-fg-3')}>
                 {approved ? `팀장 승인 ${formatDate(decision!.at)} · 판단 기록·이슈·추적` : '판단 기록·이슈·추적 (보기만)'}
+              </span>
+            </span>
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            disabled={!approved}
+            aria-current={page === 'develop' ? 'page' : undefined}
+            onClick={() => onGo('develop')}
+            title={approved ? '개발 상태와 결과물 미리보기' : '팀장이 최종본을 승인하면 열립니다'}
+            className={cx(
+              'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
+              !approved ? 'cursor-not-allowed border-line bg-card/40 opacity-60'
+                : page === 'develop' ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
+            )}
+          >
+            <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md',
+              developed?.at ? 'bg-ok text-card' : page === 'develop' ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
+              <Play size={14} weight="fill" />
+            </span>
+            <span className="min-w-0">
+              <span className={cx('block text-label', page === 'develop' ? 'font-semibold' : 'font-medium text-fg-2')}>최종 개발물 미리보기</span>
+              <span className={cx('block truncate text-micro', developed?.at ? 'text-ok' : 'text-fg-3')}>
+                {!approved ? '팀장 승인 후' : developed?.at ? `개발 ${formatDate(developed.at)}` : '개발 대기'}
               </span>
             </span>
           </button>

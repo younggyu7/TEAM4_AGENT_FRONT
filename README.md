@@ -87,6 +87,13 @@ ID(요구사항·기능·테이블·이슈)를 누르면 해당 탭의 그 항�
 | `POST /projects/title` | 버전 제목 |
 | `POST /projects/versions` + `GET /jobs` | 기능 명세 '내보내기 → ERD 만들기'·'AI로 답 반영'·'기능 명세 다시 만들기', ERD '저장하고 새 버전 만들기' (`answers`·`confirm_rules`·`dispositions`) |
 | `GET /capabilities` | 기능 명세 수정본·추천안 확인 규칙을 넘길 수 있는지 |
+| `GET /develop/plan` · `POST /develop` + `GET /jobs` | 산출물 보기(팀장 승인 최종본) '최종 개발하기'·'다시 개발하기' (예상 확인 후, 개발 파트장·팀장) |
+| `GET /preview/<프로젝트>/status` · `POST …/stop` | 단계 표시줄 '최종 개발물 미리보기' 화면(팀장 승인 뒤): 개발·실행·git 상태, 실행 끄기 |
+| `GET /preview/<프로젝트>/` | 그 화면 위 '결과물 미리보기' (새 탭, Docker 실행 후 앱 화면. 백엔드가 없으면 예시 데이터 화면) |
+| `GET /develop/files` · `GET·PUT /develop/file` | 최종 개발물 1단계 파일 구성·코드 보기·고쳐 저장 |
+| `GET /preview/<프로젝트>/terminal` | 최종 개발물 2단계 터미널 |
+| `GET·POST /develop/git` · `POST /develop/git/push` + `GET /jobs` | 최종 개발물 3단계 'Git에 올리기' (화면·백엔드 저장소 설정, 토큰은 다시 안 보임) |
+| `GET /tech-stacks` | 최종 산출물 기술 스택 세 칸 (화면·백엔드·DB, 지원하는 것만 고름) |
 
 오류 응답은 `{ "detail": "..." }`이다. 화면이 쓰는 타입은 [src/types.ts](src/types.ts)이고, 원본 계약은 백엔드 `app/schemas/`(기능별: requirement·function·data_model·review·version)다. 스키마가 바뀌면 같이 맞춘다.
 

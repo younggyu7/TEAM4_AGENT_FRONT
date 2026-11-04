@@ -164,8 +164,25 @@ export interface VersionRecord {
   summary?: string[]
   db_validation?: string
   db_engine?: string
-  /** 팀장이 최종 산출물 화면에서 고른 기술 스택 (이것이 있어야 '확정') */
-  tech_stack?: { stack: string; basis: string }
+  /** 팀장이 최종 산출물 화면에서 고른 기술 스택 (이것이 있어야 '확정'). parts: 화면·백엔드·DB를 나눠 고른 값 */
+  tech_stack?: { stack: string; basis: string; parts?: Record<'frontend' | 'backend' | 'database', string> }
+  /** 최종 개발하기 기록 (승인한 최종본): 누가·언제·AI 사용 여부·미리보기 빌드 여부 */
+  develop?: {
+    version: string; at: string; by: { id: number; name: string; role: string }; logic: boolean; mock: boolean; backend: boolean; log: string[]
+    /** 업무 기능 AI 구현을 했는지와 모델·effort */
+    build?: boolean
+    ai?: { mode?: 'build' | 'logic'; model?: string; effort?: string }
+    /** 기능별 구현 방식과 고객 답 대기 규칙 */
+    summary?: { functions: number; with_api: number; ai: string[]; failed: string[]; template: string[]; todo_count: number
+      /** 빈 로직만 AI: AI가 채운 기능·자리 수 */
+      logic_functions?: string[]; logic_holes?: number
+      todos: { function: string; rule: string; reason: string }[] }
+    /** 자동 확인: admin 로그인 + 조회 API (서버 코드가 없으면 없음) */
+    check?: { ok: boolean; message?: string; apis?: number; counts?: { ok: number; not_implemented: number; errors: number; other: number }
+      errors?: string[]; not_implemented?: string[]; other?: string[] } | null
+  }
+  /** git 올리기 기록: 쪽(frontend·backend)마다 브랜치@커밋 */
+  git?: { at: string; by: { id: number; name: string }; pushed: Record<string, string>; urls: Record<string, string> }
   /** 화면 요청으로 만든 사람 */
   created_by?: { id: number; name: string; role: string }
   /** 최종본: 팀장의 마지막 결정(승인·수정 지시)과 그 기록 */

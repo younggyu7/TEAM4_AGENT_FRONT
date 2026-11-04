@@ -4,6 +4,7 @@ import type { Project } from '../../types'
 import type { Load } from '../lib/data'
 import type { Route } from '../lib/route'
 import { initials, type User } from '../lib/session'
+import { SidebarNotices } from './Notices'
 import { VersionGraph } from './VersionGraph'
 import { cx, fmt, IconButton } from './ui'
 
@@ -172,6 +173,9 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
           {user.is_admin && <NavItem icon={<UsersThree />} label="관리자 페이지" active={route.name === 'members'} onClick={() => navigate({ name: 'members' })} />}
         </ul>
       </nav>
+
+      {/* 나에게 온 알림 (설계 버전 위): 보고 있는 프로젝트가 있으면 그 프로젝트, 없으면 전체. '확인'을 누르면 사라진다 */}
+      <SidebarNotices navigate={navigate} project={current && project ? current.project : undefined} />
 
       {/* 보고 있는 프로젝트의 버전 트리 (아래 기능 명세 → 가운데 ERD → 위 최종 산출물, 다시 만든 기능 명세는 갈라져 나온다) */}
       {current && project && (

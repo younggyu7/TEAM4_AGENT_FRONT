@@ -32,7 +32,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /* ------------------------------------------------------------ 회원·권한 */
 /** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
-export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide'
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'code_edit'
 
 export interface Member {
   id: number
@@ -66,10 +66,13 @@ export interface Directive {
 
 /** 나에게 온 알림 (역할별): 수정 지시·기능 명세 대기·승인 요청·승인 대기 */
 export interface Notice {
+  /** 확인할 때 쓰는 ID */
+  id: string
   project: string
-  kind: 'directive' | 'waiting' | 'request' | 'decide'
+  /** 상태 알림(수정 지시·대기·승인 요청·승인 대기·개발 대기) / 일 알림(업로드 분석 완료·ERD 초안·개발 초안) */
+  kind: 'directive' | 'waiting' | 'request' | 'decide' | 'develop' | 'uploaded' | 'erd_draft' | 'developed'
   at: string
-  page: 'spec' | 'erd' | 'final'
+  page: 'spec' | 'erd' | 'final' | 'develop'
   version: string
   title: string
   detail: string
@@ -85,6 +88,154 @@ export async function resolveDirective(body: { project: string; final: string; s
 
 export async function getNotices(): Promise<Notice[]> {
   return ((await (await request('/notices')).json()) as { notices: Notice[] }).notices
+}
+
+/** 알림 확인: 나에게서만 지운다 */
+export async function dismissNotice(project: string, id: string): Promise<void> {
+  await post('/notices/dismiss', { project, id })
+}
+
+/* ------------------------------------------------------------ 최종 개발하기·미리보기·git (승인한 최종본) */
+/** 개발 전 예상: 화면·파일 수, 백엔드를 만드는지, AI로 업무 로직까지 채울 때 예상 토큰·비용 (LLM 없음) */
+export interface DevelopPlan {
+  version: string
+  stack: string
+  backend: boolean
+  menus: number
+  screens: number
+  autos: number
+  files: number
+  logic: { functions: number; cached: number; stale: number; input_tokens: number; output_tokens: number; cost: Record<string, number> }
+  /** 개발할 세 층과 개발 틀이 없는 층 (있으면 AI가 뼈대부터 → 비용 더 듦) */
+  parts: Record<StackLayer, string>
+  /** 최종 개발하기를 하지 않는 스택이면 그 안내 (예: Oracle — 설계 산출물까지만) */
+  blocked: string
+  untemplated: { layer: StackLayer; name: string; label: string }[]
+  warning: string
+  /** AI 업무 기능 구현(--build) 예상: 구현할 기능 수, 이미 만든 기능(0원), 입력 토큰, effort별 출력 토큰 */
+  build: { functions: number; cached: number; input_tokens: number; output_tokens: Record<string, number>
+    /** 개발 틀이 없는 층을 AI가 뼈대부터 만들 때 (위 합계에 포함, 뼈대 출력은 실측 전 가정) */
+    scratch?: { layers: string[]; skeletons: number; functions: number; input_tokens: number; output_tokens: number } }
+}
+
+export async function getDevelopPlan(project: string, version: string): Promise<DevelopPlan> {
+  return (await (await request(`/develop/plan?${query({ project, version })}`)).json()) as DevelopPlan
+}
+
+export interface ThemeChoice { id: string; name: string; note: string
+  preview: { bg: string; side: string; side_ink: string; accent: string; accent_ink: string; cover: string; mark: string } }
+
+export async function getThemes(): Promise<{ themes: ThemeChoice[]; default: string }> {
+  return (await (await request('/develop/themes')).json()) as { themes: ThemeChoice[]; default: string }
+}
+
+/** build: 기능 전체 AI · logic: 빈 로직만 AI · 둘 다 false: AI 안 씀. theme: 화면 스타일 */
+export async function startDevelop(project: string, version: string,
+  ai: { build: boolean; logic?: boolean; model?: string; effort?: string; theme?: string }): Promise<Job> {
+  return ((await (await post('/develop', { project, version, ...ai })).json()) as { job: Job }).job
+}
+
+/** 미리보기 안내 페이지 주소 (새 탭으로 연다: 실행 미리보기를 켜고 준비되면 앱 화면으로) */
+export const previewUrl = (project: string) => apiUrl(`/preview/${encodeURIComponent(project)}/`)
+
+export interface PreviewStatus {
+  status: 'stopped' | 'building' | 'starting' | 'running' | 'failed' | 'no_backend'
+  message: string
+  port: number | null
+  stale: boolean
+  backend: boolean
+  mock: boolean
+  docker: boolean
+  log: string[]
+  /** 실행 중일 때 마지막으로 쓴 뒤 지난 초 (idle_limit이 되면 꺼짐) */
+  idle_seconds: number | null
+  idle_limit: number
+}
+
+/** 앱이 처음 뜰 때 만든 시연 계정 (개발 파트원·파트장·팀장만) */
+export interface PreviewAccount { loginId: string; role: string; password: string }
+
+export async function getPreviewAccounts(project: string): Promise<PreviewAccount[]> {
+  return ((await (await request(`/preview/${encodeURIComponent(project)}/accounts`)).json()) as { accounts: PreviewAccount[] }).accounts
+}
+
+/** 실행 중인 앱 주소: 우리 도구에 들어온 주소에 앱 포트 (팀원 PC에서도 같은 주소로 연다) */
+export const appUrl = (port: number) => `${window.location.protocol}//${window.location.hostname}:${port}/`
+
+export async function getPreviewStatus(project: string): Promise<PreviewStatus> {
+  return (await (await request(`/preview/${encodeURIComponent(project)}/status`)).json()) as PreviewStatus
+}
+
+export async function stopPreview(project: string): Promise<PreviewStatus> {
+  return (await (await post(`/preview/${encodeURIComponent(project)}/stop`, {})).json()) as PreviewStatus
+}
+
+/** 최종 개발물 코드 폴더의 파일 (빈 업무 로직·사람이 고친 파일 표시) */
+export interface AppFile { path: string; size: number; generated: boolean; edited: boolean; holes: number; empty_holes: number
+  /** 빈 로직만 AI가 채운 자리 수, 기능 전체 AI(또는 AI 뼈대)가 쓴 파일인지 */
+  ai_holes: number; ai_file: boolean }
+export interface AppFileTree { files: AppFile[]; holes: number; empty_holes: number; edited: number; ai_holes: number; ai_files: number }
+export interface AppFileContent extends AppFile { content: string; hole_list: { name: string; line: number; empty: boolean; ai: boolean }[] }
+
+export async function getAppFiles(project: string): Promise<AppFileTree> {
+  return (await (await request(`/develop/files?${query({ project })}`)).json()) as AppFileTree
+}
+
+export async function getAppFile(project: string, path: string): Promise<AppFileContent> {
+  return (await (await request(`/develop/file?${query({ project, path })}`)).json()) as AppFileContent
+}
+
+export async function saveAppFile(project: string, path: string, content: string): Promise<AppFileContent> {
+  const res = await request('/develop/file', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, path, content }) })
+  return (await res.json()) as AppFileContent
+}
+
+/** 실행 미리보기 터미널: 빌드·실행 명령과 출력 + 앱 서버 로그 */
+export interface PreviewTerminal { status: PreviewStatus['status']; message: string; log: string[]; app_log: string[] }
+
+export async function getPreviewTerminal(project: string): Promise<PreviewTerminal> {
+  return (await (await request(`/preview/${encodeURIComponent(project)}/terminal`)).json()) as PreviewTerminal
+}
+
+export interface GitSide { url: string; branch: string; has_token: boolean }
+export type GitSettings = Record<'frontend' | 'backend', GitSide>
+
+export async function getGitSettings(project: string): Promise<GitSettings> {
+  return (await (await request(`/develop/git?${query({ project })}`)).json()) as GitSettings
+}
+
+export async function saveGitSettings(project: string, body: Record<'frontend' | 'backend', { url: string; branch: string; token: string }>): Promise<GitSettings> {
+  return (await (await post('/develop/git', { project, ...body })).json()) as GitSettings
+}
+
+export async function pushGit(project: string, version: string): Promise<Job> {
+  return ((await (await post('/develop/git/push', { project, version })).json()) as { job: Job }).job
+}
+
+/** 화면 / 백엔드 / DB 고르기 칸 (supported=false는 '지원 예정': 최종 개발하기가 아직 못 만듦) */
+export type StackLayer = 'frontend' | 'backend' | 'database'
+/** supported = 개발 틀 있음 (없어도 고를 수 있다: 최종 개발 때 AI가 뼈대부터 → 비용 더 듦) */
+export type StackCatalog = Record<StackLayer, { id: string; label: string; supported: boolean; develop?: boolean }[]>
+
+/** 버전의 기술 스택 상태: 원문(원문이 정함) · 확정(기능 명세에서 고름) · 미정 · 없음 */
+export interface StackStatus {
+  basis: '원문' | '확정' | '미정' | '없음'
+  stack: string
+  parts: Partial<Record<StackLayer, string>>
+  untemplated: { layer: StackLayer; name: string; label: string }[]
+  warning: string
+}
+
+export async function getStackStatus(project: string, version: string): Promise<StackStatus> {
+  return (await (await request(`/projects/stack?${query({ project, version })}`)).json()) as StackStatus
+}
+
+export async function getStackCatalog(): Promise<StackCatalog> {
+  return ((await (await request('/tech-stacks')).json()) as { catalog: StackCatalog }).catalog
+}
+
+export async function setTechStackParts(project: string, version: string, parts: Record<'frontend' | 'backend' | 'database', string>): Promise<void> {
+  await post('/projects/tech-stack', { project, version, parts })
 }
 
 /** 수정 지시가 돌려보낸 단계 (예전 기록은 target 하나) */
@@ -244,7 +395,7 @@ export interface Job {
   project: string
   base: string
   // 기능 명세 → ERD / ERD 저장 / 확인 질문 답 반영 → 기능 명세 새 버전 / 문서 업로드 → 기능 명세 초안 / ERD 최종 확정 → 의미 검토
-  source: 'spec' | 'erd' | 'answers' | 'run' | 'review'
+  source: 'spec' | 'erd' | 'answers' | 'run' | 'review' | 'develop' | 'git'
   status: 'running' | 'done' | 'failed'
   message: string
   log: string[]
