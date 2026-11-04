@@ -22,6 +22,7 @@ export const DEV_SPEC_FILES: { name: string; label: string; summary: string }[] 
   { name: 'DATABASE.md', label: '데이터베이스', summary: '테이블·관계·업무 제약·보안 컬럼 (기준은 schema.sql)' },
   { name: 'API.md', label: 'API', summary: '기능별 API: 경로·권한·요청·응답·오류, 필드마다 DB 컬럼' },
   { name: 'openapi.yaml', label: 'OpenAPI 정의', summary: 'API.md와 같은 내용의 OpenAPI 3.1 (기계가 읽는 기준)' },
+  { name: 'BEHAVIOR.md', label: '업무 동작', summary: '상태 전환, 자동 처리, 요청에 없는 값의 출처' },
   { name: 'ACCEPTANCE_CRITERIA.md', label: '수용 기준', summary: '기능·비기능 수용 기준 (AC ID = 테스트 이름), 테스트 방침' },
   { name: 'TASKS.md', label: '작업 목록', summary: '작업 순서·선행 작업·만들 것·완료 기준(AC)·보류' },
   { name: 'DECISIONS.md', label: '결정 기록', summary: '확인 질문의 답·추천안, 공통 결정, 요구사항 결정, 사용자 의견' },

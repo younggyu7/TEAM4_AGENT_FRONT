@@ -17,7 +17,7 @@ export const DOC_PAGES: { id: DocPage; label: string }[] = [
   { id: 'trace', label: '추적' },
   { id: 'issues', label: '이슈' },
   { id: 'decisions', label: '판단 기록' },
-  { id: 'dev-spec', label: '개발 스펙' },   // 최종본('ERD 최종 확정')에만 있는 개발 AI용 문서 9개
+  { id: 'dev-spec', label: '개발 스펙' },   // 최종본('ERD 최종 확정')에만 있는 개발 AI용 문서 10개
 ]
 
 export const PAGE_LABEL: Record<Page, string> = {

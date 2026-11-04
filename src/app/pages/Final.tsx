@@ -430,7 +430,7 @@ function DdlCard({ project, version }: { project: string; version: string }) {
   )
 }
 
-/** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 9개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
+/** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 10개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
 function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen, onChosen }: {
   design: Design
   project: string
@@ -447,11 +447,11 @@ function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen,
       <CardHeader eyebrow="Dev spec" title="개발 스펙 파일" titleId="final-dev-spec">
         <p className="mt-1 text-small text-fg-3">
           {meta
-            ? `개발 AI(Claude Code 등)가 읽고 개발할 문서 9개입니다. 위 설계 산출물로 코드가 같은 틀(${meta.format})로 만들고, 1번부터 읽습니다.`
+            ? `개발 AI(Claude Code 등)가 읽고 개발할 문서 10개입니다. 위 설계 산출물로 코드가 같은 틀(${meta.format})로 만들고, 1번부터 읽습니다.`
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
-      {/* 최종 산출물 화면에서 유일하게 고칠 수 있는 것: 개발에 쓸 기술 스택 (LLM 없이 개발 스펙 9개를 다시 쓴다) */}
+      {/* 최종 산출물 화면에서 유일하게 고칠 수 있는 것: 개발에 쓸 기술 스택 (LLM 없이 개발 스펙 10개를 다시 쓴다) */}
       {meta && <StackPicker project={project} version={version} stack={meta.stack} basis={meta.stack_basis} canDecide={canDecide}
         chosen={chosen} fromAnswer={meta.stack_from_answer ?? meta.stack_basis === '확정'} onChosen={onChosen} />}
       {meta && (
@@ -480,7 +480,7 @@ function DevSpecFilesCard({ design, project, version, onOpen, canDecide, chosen,
 }
 
 /**
- * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 9개를 다시 쓰고
+ * 개발 스펙의 기술 스택: 원문에 없으면 고르거나 직접 적어 확정한다. 확정하면 백엔드가 LLM 없이 개발 스펙 10개를 다시 쓰고
  * design.json(TQ-001 답)·버전 기록(tech_stack)에 남긴다. 원문이 정한 스택은 바꾸지 않는다.
  */
 function StackPicker({ project, version, stack, basis, canDecide, chosen, fromAnswer, onChosen }: {
