@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, CheckCircle, CircleNotch, FloppyDisk, LockSimple, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, ArrowRight, ArrowsClockwise, ArrowUUpLeft, CheckCircle, CircleNotch, FloppyDisk, LockSimple, PaperPlaneTilt, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import { formatDate } from '../../labels'
 import type { Design, VersionRecord } from '../../types'
@@ -286,6 +286,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           finalized={finalized}
           page={route.page}
           log={route.page === 'spec' || route.page === 'erd' ? draft.log : undefined}
+          canEditSlack={me.role === 'lead'}
         />
       }
     >
@@ -316,16 +317,27 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         </p>
       )}
       {draft.request && (route.page === 'spec' || route.page === 'erd') && (
-        <p role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-info/40 bg-info-soft px-4 py-3 text-label text-info">
+        <div role="status" className="mb-4 flex flex-wrap items-start gap-2 rounded-lg border border-info/40 bg-info-soft px-4 py-3 text-label text-info">
           <PaperPlaneTilt size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>
+          <span className="min-w-0 flex-1">
             <strong className="font-semibold">{draft.request.by.name}님이 수정 완료 승인을 요청했습니다</strong> ({formatDate(draft.request.at)})
             {draft.request.note && <span className="block text-fg">{draft.request.note}</span>}
             <span className="block text-small text-fg-3">
               {(route.page === 'spec' ? perm.specConfirm : perm.erdConfirm)
-                ? `오른쪽 '변경 내역'과 고친 항목을 확인하고 ${route.page === 'spec' ? "'내보내기 → ERD 만들기'" : "'ERD 최종 확정하기'"}를 누르세요.`
-                : '파트장이 확인하고 확정합니다. 지금 다시 고치면 요청이 취소됩니다.'}
+                ? `오른쪽 '변경 내역'과 고친 항목을 확인하고 ${route.page === 'spec' ? "'내보내기 → ERD 만들기'" : "'ERD 최종 확정하기'"}로 승인하거나, 고칠 것이 있으면 사유와 함께 반려하세요.`
+                : '파트장이 확인하고 확정(승인)하거나 반려합니다. 지금 다시 고치면 요청이 취소됩니다.'}
             </span>
+          </span>
+          {(route.page === 'spec' ? perm.specConfirm : perm.erdConfirm) && <RejectButton draft={draft} disabled={running} />}
+        </div>
+      )}
+      {!draft.request && draft.rejection && (route.page === 'spec' || route.page === 'erd') && (
+        <p role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-label text-warn">
+          <ArrowUUpLeft size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <span>
+            <strong className="font-semibold">{draft.rejection.by.name}님이 {draft.rejection.request.by.name}님의 승인 요청을 반려했습니다</strong> ({formatDate(draft.rejection.at)})
+            <span className="block text-fg">사유: {draft.rejection.reason}</span>
+            <span className="block text-small text-fg-3">고친 뒤 다시 '수정 완료 승인 요청'을 보내세요.</span>
           </span>
         </p>
       )}
@@ -408,6 +420,43 @@ function RequestButton({ draft, ready, reason }: { draft: Draft; ready: boolean;
       title={ready ? (draft.request ? `${draft.request.by.name}님이 이미 요청했습니다. 다시 보내면 새 요청으로 바뀝니다` : '파트장에게 이 수정을 확인하고 확정해 달라고 요청합니다') : reason}>
       {draft.request ? '승인 요청됨 · 다시 보내기' : '수정 완료 승인 요청'}
     </Button>
+  )
+}
+
+/** 파트장·팀장의 '반려': 사유(필수)를 적어 파트원의 승인 요청을 돌려보낸다. 요청한 파트원에게 Slack으로도 간다 */
+function RejectButton({ draft, disabled }: { draft: Draft; disabled?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const send = async () => {
+    setSending(true)
+    setError('')
+    try {
+      await draft.rejectReview(reason.trim())
+      setOpen(false)
+      setReason('')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSending(false)
+    }
+  }
+  if (!open) {
+    return (
+      <Button size="sm" variant="secondary" icon={<ArrowUUpLeft />} disabled={disabled} onClick={() => setOpen(true)}
+        title="고칠 것이 있으면 사유와 함께 요청을 돌려보냅니다 (요청한 파트원에게 알림)">반려</Button>
+    )
+  }
+  return (
+    <span role="group" aria-label="승인 요청 반려" className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
+      <input aria-label="반려 사유 (필수)" placeholder="반려 사유 (필수)" value={reason} maxLength={500} autoFocus
+        onChange={(e) => setReason(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && reason.trim()) void send() }}
+        className="min-h-8 w-64 max-w-full rounded-sm border border-control bg-card px-2 text-small text-fg" />
+      <Button size="sm" variant="danger" disabled={sending || !reason.trim()} onClick={() => void send()}>{sending ? '보내는 중…' : '반려하기'}</Button>
+      <Button size="sm" variant="ghost" onClick={() => { setOpen(false); setError('') }}>취소</Button>
+      {error && <span role="alert" className="w-full text-small text-danger">{error}</span>}
+    </span>
   )
 }
 

@@ -1,4 +1,4 @@
-import { CheckCircle, Key, Prohibit, ShieldCheck, UserPlus } from '@phosphor-icons/react'
+import { CheckCircle, Key, Prohibit, ShieldCheck, SlackLogo, UserPlus } from '@phosphor-icons/react'
 import { useCallback, useEffect, useId, useState } from 'react'
 import { createMember, getRoles, listMembers, resetPassword, updateMember, type Member } from '../../api'
 import { formatDate } from '../../labels'
@@ -43,17 +43,22 @@ export function Members({ shell }: { shell: ShellBase }) {
       <Card aria-labelledby="members-title">
         <CardHeader level={1} eyebrow="Admin" title="회원·권한" titleId="members-title">
           <p className="mt-1 text-label text-fg-3">역할을 바꾸면 그 회원의 권한이 바로 바뀝니다. 가입한 회원은 역할을 정해 승인합니다. 승인 대기 {pending}명</p>
+          <p className="mt-1 flex items-center gap-1.5 text-small text-fg-3">
+            <SlackLogo size={14} aria-hidden="true" />
+            Slack 멤버 ID는 프로젝트 Slack 채널에 초대하고 알림에서 @멘션할 때 씁니다 (업로드 화면에서 담당자로 고를 수 있음). 비우면 초대·멘션하지 않습니다.
+          </p>
         </CardHeader>
         {error && <ErrorNote message={error} />}
         {!members ? <Loading label="회원을 불러오는 중" lines={5} /> : (
           <div className="overflow-x-auto px-5 pb-5">
-            <table className="w-full min-w-[640px] text-left text-label">
+            <table className="w-full min-w-[840px] text-left text-label">
               <thead className="text-small text-fg-3">
                 <tr className="border-b border-line">
                   <th className="py-2 pr-3 font-medium">회원</th>
                   <th className="py-2 pr-3 font-medium">상태</th>
                   <th className="py-2 pr-3 font-medium">역할</th>
                   <th className="py-2 pr-3 font-medium">관리자</th>
+                  <th className="py-2 pr-3 font-medium">Slack 멤버 ID</th>
                   <th className="py-2 font-medium"><span className="sr-only">처리</span></th>
                 </tr>
               </thead>
@@ -81,6 +86,10 @@ export function Members({ shell }: { shell: ShellBase }) {
                       <td className="py-2.5 pr-3">
                         <Checkbox checked={m.is_admin} label={<span className="sr-only">{m.name} 관리자</span>}
                           onChange={(v) => void change({ id: m.id, is_admin: v })} />
+                      </td>
+                      <td className="py-2.5 pr-3">
+                        <SlackCell member={m}
+                          onSaved={(next) => setMembers((list) => list?.map((x) => (x.id === next.id ? next : x)) ?? null)} />
                       </td>
                       <td className="py-2.5 text-right">
                         <span className="inline-flex flex-wrap justify-end gap-1.5">
@@ -111,21 +120,21 @@ export function Members({ shell }: { shell: ShellBase }) {
 
 /** 계정 바로 만들기: 역할을 정해 승인된 상태로 만든다 (가입 절차 없이) */
 function CreateCard({ roles, onCreated }: { roles: { id: string; label: string }[]; onCreated: (m: Member) => void }) {
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: '', admin: false })
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: '', admin: false, slack: '' })
   const [error, setError] = useState('')
   const [done, setDone] = useState('')
   const [sending, setSending] = useState(false)
   const id = useId()
-  const set = (k: 'name' | 'email' | 'password' | 'role') => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  const set = (k: 'name' | 'email' | 'password' | 'role' | 'slack') => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const submit = async () => {
     setSending(true)
     setError('')
     setDone('')
     try {
-      const m = await createMember({ email: form.email.trim(), name: form.name.trim(), password: form.password, role: form.role, is_admin: form.admin })
+      const m = await createMember({ email: form.email.trim(), name: form.name.trim(), password: form.password, role: form.role, is_admin: form.admin, slack_id: form.slack.trim() })
       onCreated(m)
       setDone(`${m.name} (${m.role_label}) 계정을 만들었습니다.`)
-      setForm({ name: '', email: '', password: '', role: form.role, admin: false })
+      setForm({ name: '', email: '', password: '', role: form.role, admin: false, slack: '' })
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -137,7 +146,7 @@ function CreateCard({ roles, onCreated }: { roles: { id: string; label: string }
       <CardHeader eyebrow="New account" title="계정 만들기" titleId="create-title">
         <p className="mt-1 text-small text-fg-3">가입 절차 없이 역할을 정해 바로 쓸 수 있는 계정을 만듭니다. 비밀번호는 본인에게 따로 알려 주세요.</p>
       </CardHeader>
-      <form className="grid gap-3 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-5" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+      <form className="grid gap-3 px-5 pb-5 sm:grid-cols-2 lg:grid-cols-6" onSubmit={(e) => { e.preventDefault(); void submit() }}>
         <div><Label htmlFor={`${id}-n`}>이름</Label><TextInput dense id={`${id}-n`} value={form.name} onChange={set('name')} /></div>
         <div><Label htmlFor={`${id}-e`}>이메일</Label><TextInput dense id={`${id}-e`} type="email" value={form.email} onChange={set('email')} /></div>
         <div><Label htmlFor={`${id}-p`} hint="8자 이상">비밀번호</Label><TextInput dense id={`${id}-p`} type="text" autoComplete="off" value={form.password} onChange={set('password')} /></div>
@@ -148,12 +157,13 @@ function CreateCard({ roles, onCreated }: { roles: { id: string; label: string }
             {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
         </div>
+        <div><Label htmlFor={`${id}-s`} hint="선택">Slack 멤버 ID</Label><TextInput dense id={`${id}-s`} className="font-mono" placeholder="U…" value={form.slack} onChange={set('slack')} /></div>
         <div className="flex flex-col justify-end gap-1.5">
           <Checkbox checked={form.admin} onChange={(v) => setForm((f) => ({ ...f, admin: v }))} label="관리자" />
           <Button type="submit" size="sm" variant="primary" icon={<UserPlus />}
             disabled={sending || !form.name.trim() || !form.email.trim() || form.password.length < 8 || !form.role}>만들기</Button>
         </div>
-        {(error || done) && <p role={error ? 'alert' : 'status'} className={`text-small sm:col-span-2 lg:col-span-5 ${error ? 'text-danger' : 'text-ok'}`}>{error || done}</p>}
+        {(error || done) && <p role={error ? 'alert' : 'status'} className={`text-small sm:col-span-2 lg:col-span-6 ${error ? 'text-danger' : 'text-ok'}`}>{error || done}</p>}
       </form>
     </Card>
   )
@@ -174,6 +184,39 @@ function PasswordButton({ member, onError }: { member: Member; onError: (message
       <Button size="sm" variant="primary" disabled={value.length < 8}
         onClick={() => resetPassword(member.id, value).then(() => { setOpen(false); setValue(''); setNote('바꿈') }).catch((e) => onError((e as Error).message))}>바꾸기</Button>
       <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>취소</Button>
+    </span>
+  )
+}
+
+/** Slack 멤버 ID 입력: 바꾸면 '저장' (프로젝트 채널 초대·알림 멘션에 쓴다) */
+function SlackCell({ member, onSaved }: { member: Member; onSaved: (m: Member) => void }) {
+  const [value, setValue] = useState(member.slack_id)
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const dirty = value.trim().toUpperCase() !== member.slack_id
+  const save = async () => {
+    setBusy(true)
+    setNote(null)
+    try {
+      const next = await updateMember({ id: member.id, slack_id: value.trim() })
+      onSaved(next)
+      setValue(next.slack_id)
+      setNote({ ok: true, text: next.slack_id ? '저장함' : '지움' })
+    } catch (e) {
+      setNote({ ok: false, text: (e as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <span className="flex flex-col gap-1">
+      <span className="inline-flex items-center gap-1">
+        <TextInput dense aria-label={`${member.name} Slack 멤버 ID`} placeholder="U… (없음)" className="!w-36 font-mono"
+          value={value} maxLength={21} onChange={(e) => { setValue(e.target.value); setNote(null) }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) void save() }} />
+        {dirty && <Button size="sm" variant="primary" disabled={busy} onClick={() => void save()}>저장</Button>}
+      </span>
+      {note && <span role={note.ok ? 'status' : 'alert'} className={`max-w-56 text-micro ${note.ok ? 'text-ok' : 'text-danger'}`}>{note.text}</span>}
     </span>
   )
 }

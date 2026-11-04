@@ -7,15 +7,18 @@ import { useUsages, type Load, type VersionUsage } from '../lib/data'
 import { costOf, shortModel, usd } from '../lib/pricing'
 import type { EditPage, Page } from '../lib/route'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
+import { SlackCard } from './SlackCard'
 import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
 
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
 
-export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log }: {
+export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log, canEditSlack = false }: {
   design: Design
   project?: Project
   version: string
+  /** 팀장: 프로젝트 Slack 담당자를 바꿀 수 있다 (백엔드도 팀장만 허용) */
+  canEditSlack?: boolean
   /** 단계마다 그 단계 버전(기능 명세 v1, ERD v1.2)의 확인 항목 요약. null이면 읽는 중 */
   reviews: Record<EditPage, Summary | null>
   finalized: Partial<Record<EditPage | 'final', string>>
@@ -31,6 +34,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
     <>
       <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
       {log && <ChangeLogCard log={log} />}
+      {project && <SlackCard project={project.id} canEdit={canEditSlack} />}
       <TokenCard usages={usages} version={version} />
       <IssuesCard design={design} />
     </>
@@ -52,6 +56,7 @@ function ChangeLogCard({ log }: { log: DraftLogEntry[] }) {
                   <span className="font-medium text-fg">{e.by.name}</span>
                   {e.event === 'request' && <Badge tone="info">승인 요청</Badge>}
                   {e.event === 'request_cancelled' && <Badge tone="warn">요청 취소</Badge>}
+                  {e.event === 'request_rejected' && <Badge tone="danger">반려</Badge>}
                   {e.event === 'confirm' && <Badge tone="ok">확정</Badge>}
                   <span className="text-fg-3 tabular-nums">{formatDate(e.at)}</span>
                 </p>

@@ -11,6 +11,7 @@ export const NOTICES_CHANGED = 'notices:changed'
 export const NOTICE_KIND: Record<Notice['kind'], { tone: Tone; label: string }> = {
   directive: { tone: 'warn', label: '수정 지시' }, waiting: { tone: 'neutral', label: '대기' },
   request: { tone: 'info', label: '승인 요청' }, decide: { tone: 'info', label: '승인 대기' }, develop: { tone: 'ok', label: '개발 대기' },
+  rejected: { tone: 'danger', label: '반려' },
   uploaded: { tone: 'neutral', label: '분석 완료' }, erd_draft: { tone: 'neutral', label: 'ERD 초안' }, developed: { tone: 'ok', label: '개발 초안' },
 }
 
