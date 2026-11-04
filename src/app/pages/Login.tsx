@@ -5,6 +5,7 @@ import { SchemaArt } from '../components/PageHeader'
 import { Button, Checkbox, Label, TextInput } from '../components/ui'
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const SLACK_ID = /^[UW][A-Z0-9]{6,20}$/   // 백엔드 services/users.py SLACK_ID와 같은 규칙
 const SELECT = 'min-h-11 w-full rounded-md border border-control bg-card px-3 text-body text-fg focus-visible:border-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15'
 
 /** 로그인·회원가입. 왼쪽은 Runway식 검은 구획(큰 제목 + 장식), 오른쪽은 입력. 좁은 화면에서는 위아래로 쌓인다.
@@ -166,9 +167,9 @@ export function Login({ onSignIn }: { onSignIn: (email: string, password: string
   )
 }
 
-/** 회원가입: 이름·이메일·비밀번호와 희망 역할 (관리자가 승인할 때 참고, 바로 권한을 주지 않음) */
+/** 회원가입: 이름·이메일·비밀번호와 희망 역할 (관리자가 승인할 때 참고, 바로 권한을 주지 않음), Slack 멤버 ID (프로젝트 채널 초대·멘션) */
 function SignupForm({ onCancel, onDone }: { onCancel: () => void; onDone: (email: string, pending: boolean) => void }) {
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', role: '' })
+  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '', role: '', slack: '' })
   const [roles, setRoles] = useState<{ id: string; label: string }[]>([])
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
@@ -179,14 +180,15 @@ function SignupForm({ onCancel, onDone }: { onCancel: () => void; onDone: (email
   const problem = !form.name.trim() ? '이름을 입력하세요.'
     : !EMAIL.test(form.email.trim()) ? '이메일 형식이 아닙니다.'
     : form.password.length < 8 ? '비밀번호는 8자 이상이어야 합니다.'
-    : form.password !== form.confirm ? '비밀번호 확인이 맞지 않습니다.' : ''
+    : form.password !== form.confirm ? '비밀번호 확인이 맞지 않습니다.'
+    : form.slack.trim() && !SLACK_ID.test(form.slack.trim().toUpperCase()) ? "Slack 멤버 ID는 U로 시작하는 영문·숫자입니다 (Slack 프로필 → ⋮ → '멤버 ID 복사')." : ''
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (problem) return setError(problem)
     setSending(true)
     setError('')
     try {
-      const r = await signup({ email: form.email.trim(), name: form.name.trim(), password: form.password, requested_role: form.role })
+      const r = await signup({ email: form.email.trim(), name: form.name.trim(), password: form.password, requested_role: form.role, slack_id: form.slack.trim() })
       onDone(form.email.trim(), r.pending)
     } catch (err) {
       setError((err as Error).message)
@@ -225,6 +227,12 @@ function SignupForm({ onCancel, onDone }: { onCancel: () => void; onDone: (email
             <option value="">선택 안 함</option>
             {roles.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
+        </div>
+        <div>
+          <Label htmlFor={`${id}-slack`} hint="선택 · 프로젝트 Slack 채널 초대·알림 멘션">Slack 멤버 ID</Label>
+          <TextInput id={`${id}-slack`} autoComplete="off" autoCapitalize="characters" spellCheck={false} className="font-mono"
+            value={form.slack} onChange={set('slack')} placeholder="U0123ABCD" maxLength={21} />
+          <p className="mt-1 text-micro text-fg-3">Slack에서 내 프로필 → ⋮(더보기) → '멤버 ID 복사'. 나중에 관리자가 넣을 수도 있습니다.</p>
         </div>
         {error && <p role="alert" className="text-small text-danger">{error}</p>}
         <div className="flex gap-2">

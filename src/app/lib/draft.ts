@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, getDraft, requestReview, saveDraft, type DispositionChoice, type Dispositions, type DraftLogEntry, type ReviewRequest } from '../../api'
+import { ApiError, getDraft, rejectReview, requestReview, saveDraft, type DispositionChoice, type Dispositions, type DraftLogEntry, type ReviewRejection, type ReviewRequest } from '../../api'
 import type { Attribute, Design, Entity, FunctionSpec } from '../../types'
 import { listStoreKeys, readStore, removeStore, writeStore } from './storage'
 
@@ -70,6 +70,7 @@ export function useDraft(design: Design, project: string, version: string, canSa
   // 서버의 변경 내역(누가·언제·무엇을)과 파트원의 수정 완료 승인 요청
   const [log, setLog] = useState<DraftLogEntry[]>([])
   const [request, setRequest] = useState<ReviewRequest | null>(null)
+  const [rejection, setRejection] = useState<ReviewRejection | null>(null)   // 파트장·팀장의 마지막 반려
   // 저장소에서 읽은 그대로인 상태는 다시 쓰지 않는다 (손대지 않은 버전이 '편집 중'으로 잡히지 않게)
   const loaded = useRef<{ key: string; state: DraftState }>({ key, state })
   const rev = useRef(0)            // 서버 초안의 rev (저장할 때 함께 보내 늦은 저장을 막는다)
@@ -116,6 +117,7 @@ export function useDraft(design: Design, project: string, version: string, canSa
       ready.current = true
       setLog(server.log ?? [])
       setRequest(server.request ?? null)
+      setRejection(server.rejection ?? null)
       const local = readStore<DraftState>(key)
       if (server.state) {
         const next = prune(design, server.state)
@@ -275,6 +277,15 @@ export function useDraft(design: Design, project: string, version: string, canSa
       }
       const r = await requestReview(project, version, note)
       setRequest(r.request)
+      setRejection(null)
+      setLog(r.log)
+    },
+    rejection,
+    /** 파트장·팀장: 승인 요청 반려 (사유 필수). 요청한 파트원에게 Slack으로도 간다 */
+    rejectReview: async (reason: string) => {
+      const r = await rejectReview(project, version, reason)
+      setRequest(null)
+      setRejection(r.rejection)
       setLog(r.log)
     },
     saveNow,

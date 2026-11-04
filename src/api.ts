@@ -44,6 +44,8 @@ export interface Member {
   is_admin: boolean
   status: 'pending' | 'active' | 'disabled'
   created_at: string
+  /** Slack 멤버 ID (U…). 프로젝트 Slack 채널에 초대하고 알림에서 @멘션할 때 쓴다 (비우면 초대·멘션 안 함) */
+  slack_id: string
   permissions: Permission[]
 }
 
@@ -64,10 +66,10 @@ export interface Directive {
   erd_waiting: boolean
 }
 
-/** 나에게 온 알림 (역할별): 수정 지시·기능 명세 대기·승인 요청·승인 대기 */
+/** 나에게 온 알림: 수정 지시·기능 명세 대기·승인 요청·승인 대기 (역할별), 반려 (내가 요청했거나 고친 초안, 다시 요청할 때까지) */
 export interface Notice {
   project: string
-  kind: 'directive' | 'waiting' | 'request' | 'decide'
+  kind: 'directive' | 'waiting' | 'request' | 'decide' | 'rejected'
   at: string
   page: 'spec' | 'erd' | 'final'
   version: string
@@ -102,7 +104,7 @@ export async function logout(): Promise<void> {
   await post('/auth/logout', {})
 }
 
-export async function signup(body: { email: string; name: string; password: string; requested_role?: string }): Promise<{ user: Member; pending: boolean }> {
+export async function signup(body: { email: string; name: string; password: string; requested_role?: string; slack_id?: string }): Promise<{ user: Member; pending: boolean }> {
   return (await (await post('/auth/signup', body)).json()) as { user: Member; pending: boolean }
 }
 
@@ -114,11 +116,36 @@ export async function listMembers(): Promise<Member[]> {
   return ((await (await request('/users')).json()) as { users: Member[] }).users
 }
 
-export async function updateMember(body: { id: number; role?: string; status?: string; is_admin?: boolean }): Promise<Member> {
+/** 업로드 화면에서 Slack 채널에 초대할 담당자 고르기: 승인된 회원 (Slack 멤버 ID가 있는지만) */
+export interface PickMember { id: number; name: string; role: string; role_label: string; has_slack: boolean }
+
+/** 승인된 회원과 Slack 알림이 켜졌는지 (백엔드 .env SLACK_BOT_TOKEN) */
+export async function listPickMembers(): Promise<{ members: PickMember[]; slack_enabled: boolean }> {
+  const body = (await (await request('/members')).json()) as { members: PickMember[]; slack_enabled?: boolean }
+  return { members: body.members, slack_enabled: Boolean(body.slack_enabled) }
+}
+
+/** 프로젝트 Slack 채널과 지금 담당자 (토큰은 서버에만, 연결하지 않았으면 null) */
+export interface ProjectSlack { team: string; channel_name: string; members: PickMember[] }
+
+/** 담당자 바꾸기 결과: 새로 더한 담당자, 뺀 담당자(채널에서 내보냄), 초대·내보내기 못 한 회원 */
+export interface SlackMembersResult { added: string[]; removed: string[]; failed: { name: string; reason: string }[] }
+
+export async function getProjectSlack(project: string): Promise<ProjectSlack | null> {
+  return ((await (await request(`/projects/slack?${query({ project })}`)).json()) as { slack: ProjectSlack | null }).slack
+}
+
+/** 팀장: 프로젝트 Slack 담당자를 다시 고른다 (members = 새 담당자 전체) */
+export async function setSlackMembers(project: string, members: number[]): Promise<{ result: SlackMembersResult; slack: ProjectSlack }> {
+  return (await (await post('/projects/slack/members', { project, members })).json()) as { result: SlackMembersResult; slack: ProjectSlack }
+}
+
+export async function updateMember(body: { id: number; role?: string; status?: string; is_admin?: boolean; slack_id?: string }): Promise<Member> {
   return ((await (await post('/users/update', body)).json()) as { user: Member }).user
 }
 
-export async function createMember(body: { email: string; name: string; password: string; role: string; is_admin?: boolean }): Promise<Member> {
+
+export async function createMember(body: { email: string; name: string; password: string; role: string; is_admin?: boolean; slack_id?: string }): Promise<Member> {
   return ((await (await post('/users/create', body)).json()) as { user: Member }).user
 }
 
@@ -129,16 +156,19 @@ export async function resetPassword(id: number, password: string): Promise<void>
 /* ------------------------------------------------------------ 수정 초안 공유·팀장 결정 */
 type Who = { id: number; name: string; role: string }
 
-/** 변경 내역 한 묶음: 누가·언제·무엇을 (서버가 저장할 때 이전 초안과 비교해 남긴다). event: 승인 요청·취소·확정 */
+/** 변경 내역 한 묶음: 누가·언제·무엇을 (서버가 저장할 때 이전 초안과 비교해 남긴다). event: 승인 요청·취소·반려·확정 */
 export interface DraftLogEntry {
   by: Who
   at: string
-  event?: 'request' | 'request_cancelled' | 'confirm'
+  event?: 'request' | 'request_cancelled' | 'request_rejected' | 'confirm'
   changes: { target: string; label: string; what: string }[]
 }
 
 /** 파트원의 수정 완료 승인 요청 (파트장의 확정은 이것이 있어야 한다) */
 export interface ReviewRequest { by: Who; at: string; note: string }
+
+/** 파트장·팀장의 마지막 반려 (파트원이 다시 요청하거나 확정되면 지운다) */
+export interface ReviewRejection { by: Who; at: string; reason: string; request: ReviewRequest }
 
 export interface ServerDraft<T> {
   state: T | null
@@ -147,6 +177,7 @@ export interface ServerDraft<T> {
   updated_by?: Who
   log: DraftLogEntry[]
   request: ReviewRequest | null
+  rejection?: ReviewRejection | null
 }
 
 export async function getDraft<T>(project: string, version: string): Promise<ServerDraft<T>> {
@@ -155,6 +186,11 @@ export async function getDraft<T>(project: string, version: string): Promise<Ser
 
 export async function requestReview(project: string, version: string, note: string): Promise<{ request: ReviewRequest; log: DraftLogEntry[] }> {
   return (await (await post('/drafts/request', { project, version, note })).json()) as { request: ReviewRequest; log: DraftLogEntry[] }
+}
+
+/** 파트장·팀장: 파트원의 승인 요청 반려 (사유 필수, 요청한 파트원에게 Slack으로도 알린다) */
+export async function rejectReview(project: string, version: string, reason: string): Promise<{ rejection: ReviewRejection; log: DraftLogEntry[] }> {
+  return (await (await post('/drafts/request/reject', { project, version, reason })).json()) as { rejection: ReviewRejection; log: DraftLogEntry[] }
 }
 
 export async function saveDraft<T>(project: string, version: string, state: T, rev: number): Promise<Omit<ServerDraft<T>, 'state'>> {
@@ -310,16 +346,30 @@ export async function getLlmOptions(): Promise<LlmOptions> {
   return (await (await request('/llm-options')).json()) as LlmOptions
 }
 
+/** 업로드 때 만든 프로젝트 Slack 채널: 초대한 담당자와 초대하지 못한 담당자(이유). existing = 이미 있던 채널,
+ * error = Slack이 실패함 (분석은 시작했고 서버가 잠시 뒤 다시 만든다) */
+export interface SlackConnected {
+  team?: string
+  channel_name?: string
+  invited?: string[]
+  failed?: { name: string; reason: string }[]
+  existing?: boolean
+  error?: string
+}
+
 /** 원본 요구서를 올려 기능 명세 초안까지 실행한다 (확인 질문은 추천안으로 가정). 몇 분 걸리므로 작업 ID를 받고 getJob으로 확인한다.
- * model·effort는 이 프로젝트의 ERD 만들기·최종 확정까지 같이 쓴다 (비우면 백엔드 .env). DDL 검증은 항상 한다. */
-export async function startRun(file: File, opts: { project?: string; title?: string; model?: string; effort?: string }): Promise<Job> {
+ * model·effort는 이 프로젝트의 ERD 만들기·최종 확정까지 같이 쓴다 (비우면 백엔드 .env). DDL 검증은 항상 한다.
+ * Slack이 켜져 있으면(백엔드 .env) 프로젝트 비공개 채널을 만들고 slackMembers(회원 ID)를 초대한다 (Slack이 실패해도 분석은 시작). */
+export async function startRun(file: File, opts: { project?: string; title?: string; model?: string; effort?: string; slackMembers?: number[] }): Promise<{ job: Job; slack: SlackConnected | null }> {
   const form = new FormData()
   form.append('file', file)
   if (opts.project?.trim()) form.append('project', opts.project.trim())
   if (opts.title?.trim()) form.append('title', opts.title.trim())
   if (opts.model) form.append('model', opts.model)
   if (opts.effort) form.append('effort', opts.effort)
-  return ((await (await request('/runs', { method: 'POST', body: form })).json()) as { job: Job }).job
+  if (opts.slackMembers) form.append('slack_members', opts.slackMembers.join(','))
+  const body = (await (await request('/runs', { method: 'POST', body: form })).json()) as { job: Job; slack?: SlackConnected | null }
+  return { job: body.job, slack: body.slack ?? null }
 }
 
 export async function getJob(id: string): Promise<Job> {

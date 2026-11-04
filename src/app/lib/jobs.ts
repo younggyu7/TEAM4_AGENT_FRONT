@@ -41,15 +41,16 @@ export async function startReviewJob(project: string, version: string, dispositi
   track(await startReview(project, version, dispositions), onFinish)
 }
 
-/** 원본 요구서 업로드 → 기능 명세 초안까지 실행. 작업은 프로젝트 ID(업로드한 프로젝트 이름)로 기록한다. */
+/** 원본 요구서 업로드 → 기능 명세 초안까지 실행. 작업은 프로젝트 ID(업로드한 프로젝트 이름)로 기록한다.
+ * Slack이 켜져 있으면 만든 프로젝트 채널(slack)도 돌려준다. */
 export async function startUpload(
   file: File,
   opts: Parameters<typeof startRun>[1],
   onFinish: (job: Job) => void,
-): Promise<Job> {
-  const job = await startRun(file, opts)
-  track(job, onFinish)
-  return job
+): ReturnType<typeof startRun> {
+  const started = await startRun(file, opts)
+  track(started.job, onFinish)
+  return started
 }
 
 function track(job: Job, onFinish: (job: Job) => void) {

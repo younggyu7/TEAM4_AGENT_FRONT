@@ -1,13 +1,13 @@
-import { ArrowRight, FileText, TreeStructure, UploadSimple } from '@phosphor-icons/react'
+import { ArrowRight, FileText, SlackLogo, TreeStructure, UploadSimple } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { getLlmOptions, getNotices, type LlmOptions, type Notice } from '../../api'
+import { getLlmOptions, getNotices, listPickMembers, type LlmOptions, type Notice, type PickMember, type SlackConnected } from '../../api'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
 import { HomeInsights } from '../components/Insights'
 import { PageHeader, SchemaArt } from '../components/PageHeader'
 import { Shell, type ShellBase } from '../components/Shell'
 import { JobPanel } from '../components/JobPanel'
-import { Badge, Button, Card, CardHeader, cx, Empty, ErrorNote, fmt, Label, Loading, TextInput, type Tone } from '../components/ui'
+import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextInput, type Tone } from '../components/ui'
 import { draftSummaries } from '../lib/draft'
 import { startUpload, useJob } from '../lib/jobs'
 import { can, NEEDS } from '../lib/session'
@@ -114,7 +114,7 @@ export function Home({ shell }: { shell: ShellBase }) {
             </div>
           </Card>
 
-          <NewRunCard canUpload={can(user, 'upload')} onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
+          <NewRunCard canUpload={can(user, 'upload')} meId={user.id} onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
         </div>
     </Shell>
   )
@@ -127,6 +127,7 @@ function NoticesCard({ navigate, reloadKey }: { navigate: ShellBase['navigate'];
   const KIND: Record<Notice['kind'], { tone: Tone; label: string }> = {
     directive: { tone: 'warn', label: '수정 지시' }, waiting: { tone: 'neutral', label: '대기' },
     request: { tone: 'info', label: '승인 요청' }, decide: { tone: 'info', label: '승인 대기' },
+    rejected: { tone: 'danger', label: '반려' },
   }
   return (
     <Card aria-labelledby="my-notices">
@@ -160,8 +161,15 @@ const SELECT = cx('min-h-11 w-full rounded-md border border-control bg-card px-3
   'hover:border-fg-3 focus-visible:border-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15 disabled:opacity-45')
 const EFFORT_LABEL: Record<string, string> = { low: '낮음 (빠르고 저렴)', medium: '보통', high: '높음 (정확, 토큰 많이)' }
 
+/** 백엔드가 만들 프로젝트 채널 이름 (services/slack.py channel_name과 같은 규칙. 같은 이름이 있으면 뒤에 -2가 붙는다) */
+function slackChannelName(project: string): string {
+  const id = project.trim().replace(/[\s<>:"|?*]+/g, '_')   // 백엔드 프로젝트 ID (공백 → _)
+  const base = id.toLowerCase().replace(/[^0-9a-z가-힣_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '').slice(0, 60)
+  return `team4-${base || 'project'}`
+}
+
 /** 원본 요구서 올리기 → 백엔드가 전체 실행(확인 질문은 추천안으로 가정) → 끝나면 기능 명세 첫 버전을 연다 */
-function NewRunCard({ onFinished, onOpen, canUpload }: { onFinished: () => void; onOpen: (project: string, version: string) => void; canUpload: boolean }) {
+function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () => void; onOpen: (project: string, version: string) => void; canUpload: boolean; meId: number }) {
   const [file, setFile] = useState<File | null>(null)
   const [project, setProject] = useState('')
   const [title, setTitle] = useState('')
@@ -177,6 +185,18 @@ function NewRunCard({ onFinished, onOpen, canUpload }: { onFinished: () => void;
     }).catch(() => setLlm(null))
   }, [])
   const picked = llm?.models.find((m) => m.id === model)
+  // Slack(백엔드 .env 워크스페이스 토큰이 있을 때): 업로드하면 프로젝트 비공개 채널을 자동으로 만들고 고른 담당자를 초대한다
+  const [slackOn, setSlackOn] = useState(false)
+  const [people, setPeople] = useState<PickMember[]>([])
+  const [chosen, setChosen] = useState<number[]>([])
+  const [slackDone, setSlackDone] = useState<SlackConnected | null>(null)
+  useEffect(() => {
+    listPickMembers().then((r) => {
+      setSlackOn(r.slack_enabled)
+      setPeople(r.members)
+      setChosen(r.members.some((m) => m.id === meId && m.has_slack) ? [meId] : [])   // 처음엔 올리는 사람만
+    }).catch(() => setPeople([]))
+  }, [meId])
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -194,11 +214,15 @@ function NewRunCard({ onFinished, onOpen, canUpload }: { onFinished: () => void;
     if (!file) return
     setSubmitting(true)
     setError('')
+    setSlackDone(null)
     try {
-      const started = await startUpload(file, { project, title, model, effort: picked?.effort === false ? '' : effort }, (done) => {
+      const started = await startUpload(file, {
+        project, title, model, effort: picked?.effort === false ? '' : effort, slackMembers: slackOn ? chosen : undefined,
+      }, (done) => {
         if (done.status === 'done') onFinished()
       })
-      setJobProject(started.project)
+      setJobProject(started.job.project)
+      setSlackDone(started.slack)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -261,6 +285,21 @@ function NewRunCard({ onFinished, onOpen, canUpload }: { onFinished: () => void;
             <p className="mt-1 text-micro text-fg-3">요구사항 검토 등 단계별로 따로 정한 값(.env의 *_EFFORT)은 그대로 씁니다.</p>
           </div>
         </div>
+        {slackOn && (
+          <fieldset className="rounded-lg border border-line p-4">
+            <legend className="px-1 text-label font-medium">
+              Slack 채널 담당자 <span className="font-normal text-fg-3">({chosen.length}명 · 비공개 채널 <span className="font-mono">#{slackChannelName(project || file?.name.replace(/\.[^.]+$/, '') || '')}</span>을 자동으로 만들어 초대)</span>
+            </legend>
+            <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
+              {people.map((m) => (
+                <Checkbox key={m.id} checked={chosen.includes(m.id)} disabled={running || !m.has_slack}
+                  onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
+                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
+              ))}
+            </div>
+            <p className="mt-1 text-micro text-fg-3">승인 요청·승인·반려·수정 지시 알림이 그 채널에 알림마다 하나씩, 받을 담당자를 @멘션해 올라갑니다. 담당자는 나중에 프로젝트 화면에서 팀장이 바꿀 수 있습니다. Slack 멤버 ID가 없는 회원은 고를 수 없습니다.</p>
+          </fieldset>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-small text-fg-3">만든 DDL은 ERD를 만들 때마다 검증용 DB에 적용해 봅니다 (실패하면 자동으로 고침).</p>
           <Button variant="primary" icon={<UploadSimple />} disabled={!file || running || !canUpload} onClick={submit}
@@ -269,6 +308,19 @@ function NewRunCard({ onFinished, onOpen, canUpload }: { onFinished: () => void;
           </Button>
         </div>
         {error && <p role="alert" className="text-small text-danger">{error}</p>}
+        {slackDone && (
+          <p role="status" className={cx('flex items-start gap-2 text-small', slackDone.error ? 'text-warn' : 'text-ok')}>
+            <SlackLogo size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              {slackDone.error
+                ? slackDone.error
+                : slackDone.existing
+                  ? <>이 프로젝트는 이미 Slack 채널 <span className="font-mono">#{slackDone.channel_name}</span>이 있습니다 (담당자는 프로젝트 화면에서 바꾸기)</>
+                  : <>Slack {slackDone.team} 워크스페이스에 <span className="font-mono">#{slackDone.channel_name}</span> 채널을 만들었습니다 · 초대: {slackDone.invited?.join(', ') || '없음'}</>}
+              {slackDone.failed?.map((f) => <span key={f.name} className="block text-warn">초대 못 함 — {f.name}: {f.reason}</span>)}
+            </span>
+          </p>
+        )}
       </div>
     </Card>
   )
