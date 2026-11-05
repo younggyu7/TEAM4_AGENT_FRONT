@@ -178,7 +178,8 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
     }).catch(() => setLlm(null))
   }, [])
   const picked = llm?.models.find((m) => m.id === model)
-  // Slack(백엔드 .env 워크스페이스 토큰이 있을 때): 업로드하면 프로젝트 비공개 채널을 자동으로 만들고 고른 담당자를 초대한다
+  // 담당자: 담당자(고른 회원 + 올리는 사람)와 팀장만 이 프로젝트를 본다. 나중에 프로젝트 화면에서 팀장이 바꾼다.
+  // Slack(백엔드 .env 워크스페이스 토큰이 있을 때): 업로드하면 프로젝트 비공개 채널을 자동으로 만들고 담당자를 초대한다
   const [slackOn, setSlackOn] = useState(false)
   const [people, setPeople] = useState<PickMember[]>([])
   const [chosen, setChosen] = useState<number[]>([])
@@ -187,9 +188,10 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
     listPickMembers().then((r) => {
       setSlackOn(r.slack_enabled)
       setPeople(r.members)
-      setChosen(r.members.some((m) => m.id === meId && m.has_slack) ? [meId] : [])   // 처음엔 올리는 사람만
     }).catch(() => setPeople([]))
   }, [meId])
+  const always = (m: PickMember) => m.id === meId || m.role === 'lead'   // 올리는 사람·팀장은 늘 담당자
+  const assignees = people.filter((m) => always(m) || chosen.includes(m.id))
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -217,7 +219,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
     setSlackDone(null)
     try {
       const started = await startUpload(file, {
-        project, title, model, effort: picked?.effort === false ? '' : effort, slackMembers: slackOn ? chosen : undefined,
+        project, title, model, effort: picked?.effort === false ? '' : effort, members: assignees.map((m) => m.id),
       }, (done) => {
         if (done.status === 'done') onFinished()
       })
@@ -288,19 +290,24 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
             <p className="mt-1 text-micro text-fg-3">요구사항 검토 등 단계별로 따로 정한 값(.env의 *_EFFORT)은 그대로 씁니다.</p>
           </div>
         </div>
-        {slackOn && (
+        {people.length > 0 && (
           <fieldset className="rounded-lg border border-line p-4">
             <legend className="px-1 text-label font-medium">
-              Slack 채널 담당자 <span className="font-normal text-fg-3">({chosen.length}명 · 비공개 채널 <span className="font-mono">#{slackChannelName(project || file?.name.replace(/\.[^.]+$/, '') || '')}</span>을 자동으로 만들어 초대)</span>
+              담당자 <span className="font-normal text-fg-3">({assignees.length}명 · 담당자와 팀장만 이 프로젝트를 봅니다{slackOn
+                ? <> · Slack 비공개 채널 <span className="font-mono">#{slackChannelName(project || file?.name.replace(/\.[^.]+$/, '') || '')}</span>을 자동으로 만들어 초대</>
+                : ''})</span>
             </legend>
             <div className="mt-1 flex flex-wrap gap-x-5 gap-y-1">
               {people.map((m) => (
-                <Checkbox key={m.id} checked={chosen.includes(m.id)} disabled={running || !m.has_slack}
+                <Checkbox key={m.id} checked={always(m) || chosen.includes(m.id)} disabled={running || always(m)}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
+                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나' : m.role === 'lead' ? ' · 늘 포함' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
               ))}
             </div>
-            <p className="mt-1 text-micro text-fg-3">승인 요청·승인·반려·수정 지시 알림이 그 채널에 알림마다 하나씩, 받을 담당자를 @멘션해 올라갑니다. 담당자는 나중에 프로젝트 화면에서 팀장이 바꿀 수 있습니다. Slack 멤버 ID가 없는 회원은 고를 수 없습니다.</p>
+            <p className="mt-1 text-micro text-fg-3">
+              담당자가 아닌 회원에게는 이 프로젝트가 목록·알림 어디에도 보이지 않습니다. 담당자는 나중에 프로젝트 화면에서 팀장이 바꿀 수 있습니다.
+              {slackOn ? ' 알림은 그 채널에 알림마다 하나씩, 받을 담당자를 @멘션해 올라갑니다 (Slack 멤버 ID가 없는 담당자는 채널에 초대하지 못함).' : ''}
+            </p>
           </fieldset>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">

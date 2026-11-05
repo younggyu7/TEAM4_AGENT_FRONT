@@ -8,22 +8,22 @@ import { costOf, shortModel, usd } from '../lib/pricing'
 import type { EditPage, Page } from '../lib/route'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
 import { OPEN_CODE_FILE } from './CodeBrowser'
+import { MembersCard } from './MembersCard'
 import { RepoCard } from './RepoCard'
 import type { User } from '../lib/session'
-import { SlackCard } from './SlackCard'
 import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
 
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
 
-export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log, canEditSlack = false, user }: {
+export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log, canEditMembers = false, user }: {
   design: Design
   /** 최종 개발물 '코드 저장소'의 버튼 권한 */
   user?: User
   project?: Project
   version: string
-  /** 팀장: 프로젝트 Slack 담당자를 바꿀 수 있다 (백엔드도 팀장만 허용) */
-  canEditSlack?: boolean
+  /** 팀장: 프로젝트 담당자(이 프로젝트를 보는 회원, Slack 채널 초대)를 바꿀 수 있다 (백엔드도 팀장만 허용) */
+  canEditMembers?: boolean
   /** 단계마다 그 단계 버전(기능 명세 v1, ERD v1.2)의 확인 항목 요약. null이면 읽는 중 */
   reviews: Record<EditPage, Summary | null>
   finalized: Partial<Record<EditPage | 'final', string>>
@@ -44,7 +44,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
           {project && user && record?.develop && <RepoCard project={project.id} version={record.design_version} user={user} />}
           {project && <LogicStatusCard project={project.id} record={record} />}
           <DevelopTokenCard record={record} />
-          {project && <SlackCard project={project.id} canEdit={canEditSlack} />}
+          {project && <MembersCard project={project.id} canEdit={canEditMembers} />}
         </>
       ) : (
         <>
@@ -52,7 +52,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
           {log && <ChangeLogCard log={log} />}
           <TokenCard usages={usages} version={version} />
           <IssuesCard design={design} />
-          {project && <SlackCard project={project.id} canEdit={canEditSlack} />}
+          {project && <MembersCard project={project.id} canEdit={canEditMembers} />}
         </>
       )}
     </>

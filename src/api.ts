@@ -345,7 +345,7 @@ export async function listMembers(): Promise<Member[]> {
   return ((await (await request('/users')).json()) as { users: Member[] }).users
 }
 
-/** 업로드 화면에서 Slack 채널에 초대할 담당자 고르기: 승인된 회원 (Slack 멤버 ID가 있는지만) */
+/** 담당자 고르기(업로드·프로젝트 화면): 승인된 회원 (Slack 멤버 ID가 있는지만) */
 export interface PickMember { id: number; name: string; role: string; role_label: string; has_slack: boolean }
 
 /** 승인된 회원과 Slack 알림이 켜졌는지 (백엔드 .env SLACK_BOT_TOKEN) */
@@ -354,19 +354,25 @@ export async function listPickMembers(): Promise<{ members: PickMember[]; slack_
   return { members: body.members, slack_enabled: Boolean(body.slack_enabled) }
 }
 
-/** 프로젝트 Slack 채널과 지금 담당자 (토큰은 서버에만, 연결하지 않았으면 null) */
+/** 프로젝트 Slack 채널과 채널에 초대된 회원 (토큰은 서버에만) */
 export interface ProjectSlack { team: string; channel_name: string; members: PickMember[] }
 
-/** 담당자 바꾸기 결과: 새로 더한 담당자, 뺀 담당자(채널에서 내보냄), 초대·내보내기 못 한 회원 */
-export interface SlackMembersResult { added: string[]; removed: string[]; failed: { name: string; reason: string }[] }
+/** 프로젝트 담당자 한 명: in_channel = Slack 채널에 들어 있음, always = 팀장 (고르지 않아도 늘 담당자) */
+export interface Assignee extends PickMember { in_channel: boolean; always: boolean }
 
-export async function getProjectSlack(project: string): Promise<ProjectSlack | null> {
-  return ((await (await request(`/projects/slack?${query({ project })}`)).json()) as { slack: ProjectSlack | null }).slack
+/** 프로젝트 담당자(이 프로젝트를 보는 회원)와 Slack 채널 (채널이 아직 없거나 Slack이 꺼져 있으면 slack: null) */
+export interface ProjectMembers { members: Assignee[]; slack: ProjectSlack | null; slack_enabled: boolean }
+
+/** 담당자 바꾸기 결과: 새로 더한 담당자, 뺀 담당자(더는 못 봄, 채널에서 내보냄), 채널 초대·내보내기 못 한 회원 */
+export interface MembersResult { added: string[]; removed: string[]; failed: { name: string; reason: string }[] }
+
+export async function getProjectMembers(project: string): Promise<ProjectMembers> {
+  return (await (await request(`/projects/members?${query({ project })}`)).json()) as ProjectMembers
 }
 
-/** 팀장: 프로젝트 Slack 담당자를 다시 고른다 (members = 새 담당자 전체) */
-export async function setSlackMembers(project: string, members: number[]): Promise<{ result: SlackMembersResult; slack: ProjectSlack }> {
-  return (await (await post('/projects/slack/members', { project, members })).json()) as { result: SlackMembersResult; slack: ProjectSlack }
+/** 팀장: 프로젝트 담당자를 다시 고른다 (members = 새 담당자 전체, 팀장은 늘 포함). Slack 채널이 있으면 채널도 맞춘다 */
+export async function setProjectMembers(project: string, members: number[]): Promise<ProjectMembers & { result: MembersResult }> {
+  return (await (await post('/projects/members', { project, members })).json()) as ProjectMembers & { result: MembersResult }
 }
 
 export async function updateMember(body: { id: number; role?: string; status?: string; is_admin?: boolean; slack_id?: string }): Promise<Member> {
@@ -593,15 +599,16 @@ export interface SlackConnected {
 
 /** 원본 요구서를 올려 기능 명세 초안까지 실행한다 (확인 질문은 추천안으로 가정). 몇 분 걸리므로 작업 ID를 받고 getJob으로 확인한다.
  * model·effort는 이 프로젝트의 ERD 만들기·최종 확정까지 같이 쓴다 (비우면 백엔드 .env). DDL 검증은 항상 한다.
- * Slack이 켜져 있으면(백엔드 .env) 프로젝트 비공개 채널을 만들고 slackMembers(회원 ID)를 초대한다 (Slack이 실패해도 분석은 시작). */
-export async function startRun(file: File, opts: { project?: string; title?: string; model?: string; effort?: string; slackMembers?: number[] }): Promise<{ job: Job; slack: SlackConnected | null }> {
+ * members(회원 ID) = 새 프로젝트의 담당자 (올린 사람·팀장은 늘 포함, 담당자만 이 프로젝트를 봄).
+ * Slack이 켜져 있으면(백엔드 .env) 프로젝트 비공개 채널을 만들고 담당자를 초대한다 (Slack이 실패해도 분석은 시작). */
+export async function startRun(file: File, opts: { project?: string; title?: string; model?: string; effort?: string; members?: number[] }): Promise<{ job: Job; slack: SlackConnected | null }> {
   const form = new FormData()
   form.append('file', file)
   if (opts.project?.trim()) form.append('project', opts.project.trim())
   if (opts.title?.trim()) form.append('title', opts.title.trim())
   if (opts.model) form.append('model', opts.model)
   if (opts.effort) form.append('effort', opts.effort)
-  if (opts.slackMembers) form.append('slack_members', opts.slackMembers.join(','))
+  if (opts.members) form.append('members', opts.members.join(','))
   const body = (await (await request('/runs', { method: 'POST', body: form })).json()) as { job: Job; slack?: SlackConnected | null }
   return { job: body.job, slack: body.slack ?? null }
 }

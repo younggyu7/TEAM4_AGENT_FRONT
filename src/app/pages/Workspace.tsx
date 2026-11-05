@@ -38,12 +38,16 @@ export function Workspace({ shell }: { shell: ShellBase }) {
   const trail = [shell.user.name, project?.name ?? route.project, ...(isDocPage(route.page) ? ['산출물'] : []), PAGE_LABEL[route.page]]
 
   if (design.state !== 'ready') {
+    // 목록에 없는 프로젝트 = 없거나 담당자가 아닌 프로젝트 (Slack·북마크 링크로 들어온 경우). 서버도 404로 막는다
+    const hidden = design.state === 'error' && shell.projects.state === 'ready' && !project
     return (
       <Shell {...shell} header={<PageHeader trail={trail} />} insights={<Card><Loading label="진행 상황을 불러오는 중" lines={6} /></Card>}>
         <Card>
           {design.state === 'loading'
             ? <Loading label={`${PAGE_LABEL[route.page]}을 불러오는 중`} lines={8} />
-            : <ErrorNote message={`설계를 불러오지 못했습니다. (${design.message})`} hint="프로젝트·버전이 output 폴더에 있는지 확인하세요." />}
+            : hidden
+              ? <ErrorNote message="이 프로젝트를 볼 수 없습니다." hint="담당자와 팀장만 볼 수 있습니다. 필요하면 팀장에게 담당자 추가를 요청하세요." />
+              : <ErrorNote message={`설계를 불러오지 못했습니다. (${design.message})`} hint="프로젝트·버전이 output 폴더에 있는지 확인하세요." />}
         </Card>
       </Shell>
     )
@@ -286,7 +290,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           finalized={finalized}
           page={route.page}
           log={route.page === 'spec' || route.page === 'erd' ? draft.log : undefined}
-          canEditSlack={me.role === 'lead'}
+          canEditMembers={me.role === 'lead'}
           user={shell.user}
         />
       }
