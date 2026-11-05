@@ -155,6 +155,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   // 확정 버튼을 켜는 조건: 필수 항목을 모두 해결 + 진행 중 작업 없음 (ERD는 저장하지 않은 테이블 수정도 없어야 함)
   // 파트장의 확정은 파트원의 '수정 완료 승인 요청'이 있어야 켜진다 (팀장은 요청 없이). 서버도 같은 규칙으로 막는다
   const asked = Boolean(draft.request) || me.role === 'lead'
+  const RUNNING = '작업(새 버전 만들기)이 진행 중입니다. 끝난 뒤 누를 수 있습니다'
   const WAITING = "파트원의 '수정 완료 승인 요청'을 기다리는 중입니다 (요청이 오면 켜집니다)"
   const specReady = !running && perm.specConfirm && asked && (specSummary?.requiredLeft ?? 1) === 0 && specChanged
   const erdReady = !running && !lockedBy && perm.erdConfirm && asked && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0
@@ -221,12 +222,12 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
       {/* 새 답은 내보낼 때 코드로 반영된다. LLM으로 답이 바꾼 기능을 다시 쓰거나 의견으로 기능 명세 새 버전을 만들 때만 (토큰 사용) */}
       {answered > 0 ? (
         <Button icon={<ArrowsClockwise />} disabled={running || !perm.specEdit} onClick={() => setDialog('answers')}
-          title={perm.specEdit ? 'LLM이 답이 바꾼 기능을 다시 설계해 기능 명세 새 버전을 만듭니다 (토큰 사용)' : NEEDS.spec_edit}>
+          title={!perm.specEdit ? NEEDS.spec_edit : running ? RUNNING : 'LLM이 답이 바꾼 기능을 다시 설계해 기능 명세 새 버전을 만듭니다 (토큰 사용)'}>
           답 {answered}건 AI로 반영 → 기능 명세 다시
         </Button>
       ) : (
         <Button icon={<ArrowsClockwise />} disabled={running || !perm.specEdit} onClick={() => setDialog('redo')}
-          title={perm.specEdit ? '수정·의견으로 기능 명세 새 버전을 만듭니다 (고친 기능은 그대로, 의견이 있을 때만 LLM)' : NEEDS.spec_edit}>
+          title={!perm.specEdit ? NEEDS.spec_edit : running ? RUNNING : '수정·의견으로 기능 명세 새 버전을 만듭니다 (고친 기능은 그대로, 의견이 있을 때만 LLM)'}>
           기능 명세 다시 만들기 (새 버전)
         </Button>
       )}
@@ -237,6 +238,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
       ) : (
       <Button variant={specReady ? 'ok' : 'secondary'} icon={<PaperPlaneTilt />} disabled={!specReady} onClick={() => setDialog('spec')}
         title={!perm.specConfirm ? NEEDS.spec_confirm
+          : running ? RUNNING
           : !asked ? WAITING
           : (specSummary?.requiredLeft ?? 1) > 0 ? `필수 확인 항목 ${specSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`
           : !specChanged ? '마지막으로 내보낸 뒤 고친 것이 없습니다'
@@ -250,7 +252,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     <>
       {!finalized.erd && perm.erdEdit && !lockedBy && <ResetButton draft={draft} />}
       <Button icon={<FloppyDisk />} disabled={running || !perm.erdEdit || Boolean(lockedBy)} onClick={() => setDialog('erd')}
-        title={lockReason || (perm.erdEdit ? undefined : NEEDS.erd_edit)}>ERD 저장하고 새 버전 만들기</Button>
+        title={lockReason || (!perm.erdEdit ? NEEDS.erd_edit : running ? RUNNING : undefined)}>ERD 저장하고 새 버전 만들기</Button>
       {finalized.erd
         ? <Button variant="primary" icon={<ArrowRight />} onClick={() => open('final')}>최종 산출물 보기</Button>
         : !perm.erdConfirm && perm.erdEdit
@@ -259,7 +261,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
                 : draft.editedEntities ? `저장하지 않은 테이블 수정 ${draft.editedEntities}건을 먼저 'ERD 저장하고 새 버전 만들기'로 저장하세요 (새 버전에서 요청)`
                 : `필수 확인 항목 ${erdSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`} />
           : <ConfirmErdButton ready={erdReady} left={erdSummary?.requiredLeft ?? 0} unsaved={draft.editedEntities} onConfirm={startReview}
-              denied={lockReason || (perm.erdConfirm ? (asked ? undefined : WAITING) : NEEDS.erd_confirm)} />}
+              denied={lockReason || (!perm.erdConfirm ? NEEDS.erd_confirm : running ? RUNNING : asked ? undefined : WAITING)} />}
     </>
   ) : null
 

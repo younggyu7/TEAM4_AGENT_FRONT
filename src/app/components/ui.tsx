@@ -1,5 +1,5 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 
 export function cx(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
@@ -22,7 +22,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
   size?: 'sm' | 'md'
   icon?: ReactNode
 }>(function Button({ variant = 'secondary', size = 'md', icon, className, children, type = 'button', ...rest }, ref) {
-  return (
+  const tipId = useId()
+  // 꺼진 버튼의 title(못 누르는 이유)은 브라우저 기본 말풍선이 늦게 뜨거나 안 떠서, 마우스를 올리면 바로 보이게 따로 그린다
+  const why = rest.disabled && typeof rest.title === 'string' && rest.title ? rest.title : ''
+  const button = (
     <button
       ref={ref}
       type={type}
@@ -35,12 +38,37 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
         className,
       )}
       {...rest}
+      {...(why ? { title: undefined, 'aria-describedby': tipId } : {})}
     >
       {icon && <span aria-hidden="true" className="inline-flex [&>svg]:size-4">{icon}</span>}
       {children}
     </button>
   )
+  if (!why) return button
+  return (
+    // title은 말풍선으로 옮기고 화면 낭독기는 aria-describedby로 같은 이유를 읽는다
+    <WhyTip id={tipId} text={why} className={className?.includes('w-full') ? 'w-full' : undefined}>{button}</WhyTip>
+  )
 })
+
+/** 못 누르는 이유 말풍선: 감싼 요소(꺼진 버튼 등)에 마우스를 올리면 바로 아래에 보인다 */
+export function WhyTip({ id, text, children, className, align = 'right' }: {
+  id?: string; text: string; children: ReactNode; className?: string; align?: 'left' | 'right'
+}) {
+  if (!text) return <>{children}</>
+  return (
+    <span className={cx('group/why relative inline-flex', className)}>
+      {children}
+      <span id={id} role="tooltip"
+        className={cx('pointer-events-none invisible absolute top-full z-50 mt-1.5 w-max max-w-72 rounded-md bg-fg px-2.5 py-1.5',
+          'text-left text-small font-normal whitespace-normal text-card opacity-0 shadow-lg transition-opacity duration-150',
+          'group-hover/why:visible group-hover/why:opacity-100 group-hover/why:delay-150',
+          align === 'right' ? 'right-0' : 'left-0')}>
+        {text}
+      </span>
+    </span>
+  )
+}
 
 /** 아이콘만 있는 버튼: label이 접근 가능한 이름이 된다 */
 export function IconButton({ label, icon, className, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string; icon: ReactNode }) {

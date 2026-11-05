@@ -1,4 +1,4 @@
-import { ArrowRight, FileText, SlackLogo, TreeStructure, UploadSimple } from '@phosphor-icons/react'
+import { ArrowRight, FileText, SlackLogo, TreeStructure, UploadSimple, Warning } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { getLlmOptions, listPickMembers, type LlmOptions, type PickMember, type SlackConnected } from '../../api'
 import { NoticeItem, useNotices } from '../components/Notices'
@@ -148,7 +148,8 @@ function NoticesCard({ navigate, reloadKey }: { navigate: ShellBase['navigate'];
   )
 }
 
-const ACCEPT = '.pdf,.docx,.hwpx,.txt,.md'
+const ACCEPT = '.pdf,.docx,.hwpx'
+const UPLOAD_NOTE = 'PDF·DOCX·HWPX만 지원합니다. 스캔본·이미지(사진·그림으로 된 문서, PNG·JPG 등)는 글자를 읽지 못해 올릴 수 없습니다.'
 const SELECT = cx('min-h-11 w-full rounded-md border border-control bg-card px-3 text-body text-fg',
   'hover:border-fg-3 focus-visible:border-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15 disabled:opacity-45')
 const EFFORT_LABEL: Record<string, string> = { low: '낮음 (빠르고 저렴)', medium: '보통', high: '높음 (정확, 토큰 많이)' }
@@ -199,6 +200,13 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
 
   const pick = (f: File | undefined) => {
     if (!f) return
+    // 끌어다 놓은 파일은 accept가 걸러 주지 않으므로 여기서도 막는다 (스캔본·이미지로 된 문서는 서버가 올린 뒤에 막는다)
+    const ext = f.name.slice(f.name.lastIndexOf('.')).toLowerCase()
+    if (!ACCEPT.split(',').includes(ext)) {
+      setFile(null)
+      setError(`${f.name}: 지원하지 않는 형식입니다. ${UPLOAD_NOTE}${ext === '.hwp' ? ' (HWP는 한글에서 HWPX나 PDF로 저장해서 올리세요)' : ''}`)
+      return
+    }
     setFile(f)
     setError('')
   }
@@ -225,7 +233,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
   return (
     <Card aria-labelledby="new-run">
       <CardHeader eyebrow="New" title="새 문서 분석" titleId="new-run">
-        <p className="mt-1 text-label text-fg-3">고객 요구사항 원본(PDF·DOCX·HWPX·TXT)을 올리면 요구사항과 기능 명세 초안을 만듭니다. 확인 질문은 추천안으로 가정하고, 끝난 뒤 화면에서 확인·수정하고 '내보내기 → ERD 만들기'로 ERD·DDL을 만듭니다.</p>
+        <p className="mt-1 text-label text-fg-3">고객 요구사항 원본(PDF·DOCX·HWPX)을 올리면 요구사항과 기능 명세 초안을 만듭니다. 확인 질문은 추천안으로 가정하고, 끝난 뒤 화면에서 확인·수정하고 '내보내기 → ERD 만들기'로 ERD·DDL을 만듭니다.</p>
       </CardHeader>
       <div className="space-y-4 px-5 pb-5">
         {job && <JobPanel job={job} project={jobProject} onOpen={(v) => onOpen(jobProject, v)} />}
@@ -241,7 +249,10 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
           {file
             ? <span className="text-body font-medium">{file.name} <span className="text-small font-normal text-fg-3">({fmt(Math.ceil(file.size / 1024))}KB)</span></span>
             : <span className="text-body font-medium">문서를 끌어다 놓거나 눌러서 고르세요</span>}
-          <span className="text-small text-fg-3">PDF · DOCX · HWPX · TXT, 최대 50MB (HWP는 HWPX나 PDF로 저장해서 올리세요)</span>
+          <span className="text-small text-fg-3">PDF · DOCX · HWPX만, 최대 50MB (HWP는 HWPX나 PDF로 저장해서 올리세요)</span>
+          <span className="flex items-center gap-1 text-small text-warn">
+            <Warning size={14} aria-hidden="true" />스캔본·이미지(사진·캡처로 된 문서, PNG·JPG)는 글자를 읽지 못해 지원하지 않습니다
+          </span>
           <input id={inputId} type="file" accept={ACCEPT} className="sr-only" disabled={running}
             onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
         </label>
@@ -295,7 +306,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-small text-fg-3">만든 DDL은 ERD를 만들 때마다 검증용 DB에 적용해 봅니다 (실패하면 자동으로 고침).</p>
           <Button variant="primary" icon={<UploadSimple />} disabled={!file || running || !canUpload} onClick={submit}
-            title={canUpload ? undefined : NEEDS.upload}>
+            title={!canUpload ? NEEDS.upload : !file ? '먼저 문서(PDF·DOCX·HWPX)를 고르세요' : running ? '지금 분석이 끝난 뒤 올릴 수 있습니다' : undefined}>
             {submitting ? '올리는 중' : job?.status === 'running' ? '분석 중' : '올리고 분석 시작'}
           </Button>
         </div>

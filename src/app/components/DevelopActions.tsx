@@ -176,7 +176,8 @@ function DevelopDialog({ project, version, onClose, onFinished, onStarted }: { p
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={onClose}>취소</Button>
-            <Button variant="ok" icon={<Code />} disabled={sending || Boolean(plan.blocked) || (mode !== 'none' && !model)} onClick={() => void start()}>{sending ? '시작하는 중…' : '개발 시작'}</Button>
+            <Button variant="ok" icon={<Code />} disabled={sending || Boolean(plan.blocked) || (mode !== 'none' && !model)} onClick={() => void start()}
+              title={plan.blocked || (mode !== 'none' && !model ? 'AI에 쓸 모델을 먼저 고르세요' : undefined)}>{sending ? '시작하는 중…' : '개발 시작'}</Button>
           </div>
         </>
       )}

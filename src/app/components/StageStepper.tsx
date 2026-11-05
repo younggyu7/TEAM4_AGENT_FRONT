@@ -1,7 +1,7 @@
 import { Check, Files, Play } from '@phosphor-icons/react'
 import { formatDate } from '../../labels'
 import { isDocPage, type Page, type StagePage } from '../lib/route'
-import { cx } from './ui'
+import { cx, WhyTip } from './ui'
 
 const STEPS: { id: StagePage; label: string; hint: string }[] = [
   { id: 'spec', label: '기능 명세', hint: '고치고 애매한 부분 확인' },
@@ -106,29 +106,31 @@ export function StageStepper({ page, version, targets, finalized, decision, onGo
           </button>
         </li>
         <li>
-          <button
-            type="button"
-            disabled={!approved}
-            aria-current={page === 'develop' ? 'page' : undefined}
-            onClick={() => onGo('develop')}
-            title={approved ? '개발 상태와 결과물 미리보기' : '팀장이 최종본을 승인하면 열립니다'}
-            className={cx(
-              'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
-              !approved ? 'cursor-not-allowed border-line bg-card/40 opacity-60'
-                : page === 'develop' ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
-            )}
-          >
-            <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md',
-              developed?.at ? 'bg-ok text-card' : page === 'develop' ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
-              <Play size={14} weight="fill" />
-            </span>
-            <span className="min-w-0">
-              <span className={cx('block text-label', page === 'develop' ? 'font-semibold' : 'font-medium text-fg-2')}>최종 개발물 미리보기</span>
-              <span className={cx('block truncate text-micro', developed?.at ? 'text-ok' : 'text-fg-3')}>
-                {!approved ? '팀장 승인 후' : developed?.at ? `개발 ${formatDate(developed.at)}` : '개발 대기'}
+          <WhyTip text={approved ? '' : '팀장이 최종본을 승인하면 열립니다 (산출물 보기에서 최종 승인)'} align="left" className="w-full">
+            <button
+              type="button"
+              disabled={!approved}
+              aria-current={page === 'develop' ? 'page' : undefined}
+              onClick={() => onGo('develop')}
+              title={approved ? '개발 상태와 결과물 미리보기' : undefined}
+              className={cx(
+                'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
+                !approved ? 'cursor-not-allowed border-line bg-card/40 opacity-60'
+                  : page === 'develop' ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
+              )}
+            >
+              <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md',
+                developed?.at ? 'bg-ok text-card' : page === 'develop' ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
+                <Play size={14} weight="fill" />
               </span>
-            </span>
-          </button>
+              <span className="min-w-0">
+                <span className={cx('block text-label', page === 'develop' ? 'font-semibold' : 'font-medium text-fg-2')}>최종 개발물 미리보기</span>
+                <span className={cx('block truncate text-micro', developed?.at ? 'text-ok' : 'text-fg-3')}>
+                  {!approved ? '팀장 승인 후' : developed?.at ? `개발 ${formatDate(developed.at)}` : '개발 대기'}
+                </span>
+              </span>
+            </button>
+          </WhyTip>
         </li>
       </ol>
     </nav>
