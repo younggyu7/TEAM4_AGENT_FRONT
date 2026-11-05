@@ -172,6 +172,10 @@ export interface VersionRecord {
     /** 업무 기능 AI 구현을 했는지와 모델·effort */
     build?: boolean
     ai?: { mode?: 'build' | 'logic'; model?: string; effort?: string }
+    /** 이번 개발에 쓴 LLM (AI 안 씀이면 0) */
+    /** 코드 저장소 main에 남긴 개발 커밋 (바뀐 것이 없으면 null) */
+    commit?: string | null
+    usage?: { calls: number; input: number; output: number; model: string; effort: string; mode: 'build' | 'logic' | 'none' }
     /** 기능별 구현 방식과 고객 답 대기 규칙 */
     summary?: { functions: number; with_api: number; ai: string[]; failed: string[]; template: string[]; todo_count: number
       /** 빈 로직만 AI: AI가 채운 기능·자리 수 */
@@ -181,8 +185,9 @@ export interface VersionRecord {
     check?: { ok: boolean; message?: string; apis?: number; counts?: { ok: number; not_implemented: number; errors: number; other: number }
       errors?: string[]; not_implemented?: string[]; other?: string[] } | null
   }
-  /** git 올리기 기록: 쪽(frontend·backend)마다 브랜치@커밋 */
-  git?: { at: string; by: { id: number; name: string }; pushed: Record<string, string>; urls: Record<string, string> }
+  /** 원격 올리기 기록: 원격 하나의 브랜치·커밋 (예전 기록은 화면·백엔드 쪽마다 pushed·urls) */
+  git?: { at: string; by: { id: number; name: string }; url?: string; branch?: string; commit?: string
+    pushed?: Record<string, string>; urls?: Record<string, string> }
   /** 화면 요청으로 만든 사람 */
   created_by?: { id: number; name: string; role: string }
   /** 최종본: 팀장의 마지막 결정(승인·수정 지시)과 그 기록 */

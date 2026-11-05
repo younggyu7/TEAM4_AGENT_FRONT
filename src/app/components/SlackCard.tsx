@@ -16,21 +16,24 @@ export function SlackCard({ project, canEdit }: { project: string; canEdit: bool
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [done, setDone] = useState<SlackMembersResult | null>(null)
+  const [slackOn, setSlackOn] = useState<boolean | null>(null)   // 서버에 Slack 봇 토큰이 있는지
   useEffect(() => {
     setInfo(undefined)
     setEditing(false)
     setDone(null)
     getProjectSlack(project).then(setInfo).catch(() => setInfo(null))
+    listPickMembers().then((r) => setSlackOn(r.slack_enabled)).catch(() => setSlackOn(null))
   }, [project])
 
-  if (info === undefined || (info === null && !canEdit)) return null
-  if (info === null) {
+  if (info === undefined) return null
+  if (info === null) {   // 채널이 아직 없다: 누구에게나 이유를 보인다 (Slack이 꺼졌는지, 곧 만들어지는지)
     return (
       <Card aria-labelledby="slack-card">
-        <CardHeader eyebrow="Slack" title="Slack 채널 없음" titleId="slack-card" />
+        <CardHeader eyebrow="Slack" title={slackOn === false ? 'Slack 꺼짐' : 'Slack 채널 없음'} titleId="slack-card" />
         <p className="px-5 pb-5 text-small text-fg-3">
-          아직 이 프로젝트의 Slack 채널이 없습니다. 백엔드 .env에 SLACK_BOT_TOKEN이 있으면 서버가 곧 채널을 만들고
-          Slack 멤버 ID가 있는 회원을 초대합니다 (만든 뒤 여기서 담당자를 바꿀 수 있음).
+          {slackOn === false
+            ? '서버에 Slack 봇 토큰(.env SLACK_BOT_TOKEN)이 없어 Slack 알림을 보내지 않습니다. 알림은 이 웹의 왼쪽 사이드바·홈에서 볼 수 있습니다.'
+            : '아직 이 프로젝트의 Slack 채널이 없습니다. 서버가 곧 채널을 만들고 Slack 멤버 ID가 있는 회원을 초대합니다 (만든 뒤 팀장이 여기서 담당자를 바꿀 수 있음).'}
         </p>
       </Card>
     )

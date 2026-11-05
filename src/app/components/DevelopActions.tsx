@@ -1,6 +1,6 @@
 import { Code, GitBranch, X } from '@phosphor-icons/react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { getDevelopPlan, getGitSettings, getLlmOptions, getThemes, saveGitSettings, type DevelopPlan, type GitSettings, type LlmOptions, type ThemeChoice } from '../../api'
+import { checkRemote, getDevelopPlan, getGitSettings, getLlmOptions, getThemes, saveGitSettings, type DevelopPlan, type GitSettings, type LlmOptions, type ThemeChoice } from '../../api'
 import { formatDate } from '../../labels'
 import type { VersionRecord } from '../../types'
 import { startDevelopJob, startGitJob } from '../lib/jobs'
@@ -11,7 +11,7 @@ import { Badge, Button, cx, IconButton, Label, Loading, TextInput, fmt } from '.
 /**
  * 산출물 보기 제목 옆 (팀장이 승인한 최종본): '최종 개발하기'. 개발 파트장·팀장만 누른다.
  * 먼저 예상(화면·파일 수, AI 업무 로직 예상 비용)을 보여 주고 확인받는다. 기본은 LLM 없음.
- * 시작하면 최종 개발물 화면 1단계로 옮긴다 (onStarted). Git 올리기는 최종 개발물 화면 3단계에 있다.
+ * 시작하면 최종 개발물 화면 1단계로 옮긴다 (onStarted). 원격 올리기는 최종 개발물 화면 3단계와 오른쪽 '코드 저장소'에 있다.
  */
 export function DevelopActions({ project, record, user, onFinished, onStarted }: {
   project: string
@@ -39,13 +39,14 @@ export function DevelopActions({ project, record, user, onFinished, onStarted }:
   )
 }
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+/** 대화 상자 (wide: 차이 보기처럼 넓게) */
+export function Modal({ title, onClose, children, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
   const id = useId()
   useEffect(() => { ref.current?.showModal() }, [])
   return (
     <dialog ref={ref} aria-labelledby={id} onClose={onClose}
-      className="m-auto w-[min(560px,92vw)] rounded-lg border border-line bg-card p-0 text-fg backdrop:bg-black/40">
+      className={cx('m-auto rounded-lg border border-line bg-card p-0 text-fg backdrop:bg-black/40', wide ? 'w-[min(1100px,96vw)]' : 'w-[min(560px,92vw)]')}>
       <div className="flex items-center justify-between border-b border-line px-5 py-3">
         <h2 id={id} className="text-subtitle font-medium">{title}</h2>
         <IconButton label="닫기" icon={<X />} onClick={() => ref.current?.close()} />
@@ -211,12 +212,10 @@ function ThemePicker({ themes, value, onChange }: { themes: ThemeChoice[]; value
   )
 }
 
-const SIDE = { frontend: '화면(프론트)', backend: '백엔드' } as const
-
-/** 최종 개발물 3단계 'Git에 올리기': 처음엔 화면·백엔드 저장소 설정부터 (토큰은 서버에 암호화, 다시 보이지 않음) */
+/** 최종 개발물 3단계 '원격 설정 · 올리기': 원격 하나 (화면·백엔드·DB 한 저장소). 토큰은 서버에 암호화, 다시 보이지 않음 */
 export function GitDialog({ project, version, onClose, onFinished }: { project: string; version: string; onClose: () => void; onFinished: () => void }) {
   const [saved, setSaved] = useState<GitSettings | null>(null)
-  const [form, setForm] = useState({ frontend: { url: '', branch: '', token: '' }, backend: { url: '', branch: '', token: '' } })
+  const [form, setForm] = useState({ url: '', branch: '', token: '' })
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
   const [sending, setSending] = useState(false)
@@ -224,12 +223,11 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
   useEffect(() => {
     getGitSettings(project).then((g) => {
       setSaved(g)
-      setForm({ frontend: { url: g.frontend.url, branch: g.frontend.branch, token: '' }, backend: { url: g.backend.url, branch: g.backend.branch, token: '' } })
-      setEditing(!g.frontend.url && !g.backend.url)   // 처음 올릴 때는 설정부터
+      setForm({ url: g.url, branch: g.branch, token: '' })
+      setEditing(!g.url)   // 처음 올릴 때는 설정부터
     }).catch((e) => setError((e as Error).message))
   }, [project])
-  const set = (side: 'frontend' | 'backend', k: 'url' | 'branch' | 'token') => (e: { target: { value: string } }) =>
-    setForm((f) => ({ ...f, [side]: { ...f[side], [k]: e.target.value } }))
+  const set = (k: 'url' | 'branch' | 'token') => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const save = async () => {
     setSending(true)
     setError('')
@@ -242,6 +240,11 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
       setSending(false)
     }
   }
+  const check = async () => {
+    setSending(true)
+    setError('')
+    try { setSaved(await checkRemote(project)) } catch (e) { setError((e as Error).message) } finally { setSending(false) }
+  }
   const push = async () => {
     setSending(true)
     try {
@@ -253,44 +256,41 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
     }
   }
   return (
-    <Modal title={`최종본 v${version} Git에 올리기`} onClose={onClose}>
-      {!saved && !error && <Loading label="저장소 설정을 읽는 중" lines={3} />}
+    <Modal title="원격 저장소에 올리기" onClose={onClose}>
+      {!saved && !error && <Loading label="원격 설정을 읽는 중" lines={3} />}
       {error && <p role="alert" className="text-danger">{error}</p>}
       {saved && editing && (
         <>
-          <p className="text-small text-fg-3">이 프로젝트의 저장소를 적습니다 (프로젝트마다 따로). 한쪽만 적으면 그쪽만 올립니다. 브랜치를 비우면 <code>req-agent/v{version}</code>. 토큰은 서버에 암호화해 두고 다시 보여 주지 않습니다 (비우면 저장된 토큰 그대로).</p>
-          {(['frontend', 'backend'] as const).map((side) => (
-            <fieldset key={side} className="space-y-2 rounded-md border border-line px-3 py-3">
-              <legend className="px-1 text-small font-medium">{SIDE[side]} 저장소</legend>
-              <div><Label htmlFor={`${id}-${side}-u`}>주소</Label>
-                <TextInput dense id={`${id}-${side}-u`} placeholder="https://github.com/팀/저장소.git" value={form[side].url} onChange={set(side, 'url')} /></div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div><Label htmlFor={`${id}-${side}-b`}>브랜치</Label>
-                  <TextInput dense id={`${id}-${side}-b`} placeholder={`req-agent/v${version}`} value={form[side].branch} onChange={set(side, 'branch')} /></div>
-                <div><Label htmlFor={`${id}-${side}-t`} hint={saved[side].has_token ? '저장됨 ****' : '쓰기 권한'}>토큰</Label>
-                  <TextInput dense id={`${id}-${side}-t`} type="password" autoComplete="off" value={form[side].token} onChange={set(side, 'token')} /></div>
-              </div>
-            </fieldset>
-          ))}
+          <p className="text-small text-fg-3">이 프로젝트의 원격 저장소 하나를 적습니다 (화면·백엔드·DB를 한 저장소에). 브랜치를 비우면 <code>main</code>. 토큰은 서버에 암호화해 두고 다시 보여 주지 않습니다 (비우면 저장된 토큰 그대로).</p>
+          <div><Label htmlFor={`${id}-u`}>주소</Label>
+            <TextInput dense id={`${id}-u`} placeholder="https://github.com/팀/저장소.git" value={form.url} onChange={set('url')} /></div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div><Label htmlFor={`${id}-b`}>원격 브랜치</Label>
+              <TextInput dense id={`${id}-b`} placeholder="main" value={form.branch} onChange={set('branch')} /></div>
+            <div><Label htmlFor={`${id}-t`} hint={saved.has_token ? '저장됨 ****' : '쓰기 권한'}>토큰</Label>
+              <TextInput dense id={`${id}-t`} type="password" autoComplete="off" value={form.token} onChange={set('token')} /></div>
+          </div>
           <div className="flex justify-end gap-2">
-            {(saved.frontend.url || saved.backend.url) && <Button variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
-            <Button variant="primary" disabled={sending || (!form.frontend.url.trim() && !form.backend.url.trim())} onClick={() => void save()}>저장</Button>
+            {saved.url && <Button variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
+            <Button variant="primary" disabled={sending || !form.url.trim()} onClick={() => void save()}>저장</Button>
           </div>
         </>
       )}
       {saved && !editing && (
         <>
-          <ul className="space-y-1.5 text-small">
-            {(['frontend', 'backend'] as const).map((side) => (
-              <li key={side}><strong>{SIDE[side]}</strong>: {saved[side].url
-                ? <>{saved[side].url} · {saved[side].branch || `req-agent/v${version}`} · 토큰 {saved[side].has_token ? '저장됨' : '없음 (서버 공통 토큰)'}</>
-                : <span className="text-fg-3">올리지 않음</span>}</li>
-            ))}
-          </ul>
-          <p className="text-small text-fg-3">서버의 코드 폴더를 그대로 올립니다: 화면 저장소에는 frontend/와 화면·API 문서, 백엔드 저장소에는 backend/·db/·개발 스펙 문서. 빌드 결과·node_modules는 올리지 않습니다.</p>
+          <p className="text-small"><strong>원격</strong>: {saved.url} · {saved.branch} · 토큰 {saved.has_token ? '저장됨' : '없음 (서버 공통 토큰)'}</p>
+          <p className="text-small">
+            {saved.ahead === null ? <Badge tone="neutral">원격 확인 전</Badge>
+              : saved.behind ? <Badge tone="danger">원격에 서버에 없는 커밋 {saved.behind}개 — 올리지 않습니다</Badge>
+              : <Badge tone={saved.ahead ? 'warn' : 'ok'}>{saved.ahead ? `원격보다 ${saved.ahead}개 앞섬` : '원격과 같음'}</Badge>}
+            {saved.checked_at && <span className="ml-2 text-micro text-fg-3">확인 {formatDate(saved.checked_at)}</span>}
+            {saved.error && <span className="block text-micro text-danger">{saved.error}</span>}
+          </p>
+          <p className="text-small text-fg-3">서버 코드 저장소의 main과 최종본 태그(final-v…)를 올립니다. 원격에 서버에 없는 커밋이 있으면 덮어쓰지 않고 멈춥니다 (서버 밖에서 정리). 빌드 결과·node_modules·미리보기는 커밋되지 않습니다.</p>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setEditing(true)}>저장소 설정 바꾸기</Button>
-            <Button variant="ok" icon={<GitBranch />} disabled={sending} onClick={() => void push()}>{sending ? '시작하는 중…' : '올리기'}</Button>
+            <Button variant="ghost" onClick={() => setEditing(true)}>원격 설정 바꾸기</Button>
+            <Button variant="ghost" disabled={sending} onClick={() => void check()}>원격 확인</Button>
+            <Button variant="ok" icon={<GitBranch />} disabled={sending || Boolean(saved.behind)} onClick={() => void push()}>{sending ? '진행 중…' : '올리기'}</Button>
           </div>
         </>
       )}

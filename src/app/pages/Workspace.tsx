@@ -287,6 +287,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           page={route.page}
           log={route.page === 'spec' || route.page === 'erd' ? draft.log : undefined}
           canEditSlack={me.role === 'lead'}
+          user={shell.user}
         />
       }
     >

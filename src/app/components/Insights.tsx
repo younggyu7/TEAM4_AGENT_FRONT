@@ -1,20 +1,25 @@
 import { CheckCircle, Info, Warning, WarningOctagon, XCircle } from '@phosphor-icons/react'
-import { useMemo } from 'react'
-import type { DraftLogEntry } from '../../api'
+import { useEffect, useMemo, useState } from 'react'
+import { getAppFiles, type AppFileTree, type DraftLogEntry } from '../../api'
 import { formatDate } from '../../labels'
-import type { Design, Project } from '../../types'
-import { useUsages, type Load, type VersionUsage } from '../lib/data'
+import type { Design, Project, VersionRecord } from '../../types'
+import { useUsages, type Load, type Usage, type VersionUsage } from '../lib/data'
 import { costOf, shortModel, usd } from '../lib/pricing'
 import type { EditPage, Page } from '../lib/route'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
+import { OPEN_CODE_FILE } from './CodeBrowser'
+import { RepoCard } from './RepoCard'
+import type { User } from '../lib/session'
 import { SlackCard } from './SlackCard'
 import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
 
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
 
-export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log, canEditSlack = false }: {
+export function WorkspaceInsights({ design, project, version, reviews, finalized, page, log, canEditSlack = false, user }: {
   design: Design
+  /** 최종 개발물 '코드 저장소'의 버튼 권한 */
+  user?: User
   project?: Project
   version: string
   /** 팀장: 프로젝트 Slack 담당자를 바꿀 수 있다 (백엔드도 팀장만 허용) */
@@ -28,15 +33,28 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
 }) {
   const versions = project?.versions ?? [{ design_version: version }]
   const targets = useMemo(() => versions.map((v) => ({ project: project?.id ?? '', version: v.design_version })), [versions, project?.id])
-  const usages = useUsages(project ? targets : [])
+  const usages = useUsages(project && page !== 'develop' ? targets : [])
+  const record = project?.versions.find((v) => v.design_version === version)
 
   return (
     <>
-      <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
-      {log && <ChangeLogCard log={log} />}
-      {project && <SlackCard project={project.id} canEdit={canEditSlack} />}
-      <TokenCard usages={usages} version={version} />
-      <IssuesCard design={design} />
+      {page === 'develop' ? (
+        // 최종 개발물: 진행 상황·검토 지적 대신 코드 저장소(브랜치·이력), 업무 로직 현황과 개발할 때 쓴 토큰
+        <>
+          {project && user && record?.develop && <RepoCard project={project.id} version={record.design_version} user={user} />}
+          {project && <LogicStatusCard project={project.id} record={record} />}
+          <DevelopTokenCard record={record} />
+          {project && <SlackCard project={project.id} canEdit={canEditSlack} />}
+        </>
+      ) : (
+        <>
+          <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
+          {log && <ChangeLogCard log={log} />}
+          <TokenCard usages={usages} version={version} />
+          <IssuesCard design={design} />
+          {project && <SlackCard project={project.id} canEdit={canEditSlack} />}
+        </>
+      )}
     </>
   )
 }
@@ -177,7 +195,10 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
   return (
     <Card aria-labelledby="tokens-title">
       <CardHeader eyebrow="Tokens" titleId="tokens-title"
-        title={<span className="whitespace-nowrap">토큰 사용량 <span className="font-normal text-fg-3" title={model}>· {model ? shortModel(model) : usages.state === 'loading' ? '…' : '모델 기록 없음'}</span></span>} />
+        title={<span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0">토큰 사용량</span>
+          <span className="min-w-0 truncate text-small font-normal text-fg-3" title={model}>{model ? shortModel(model) : usages.state === 'loading' ? '…' : '모델 기록 없음'}</span>
+        </span>} />
       <div className="px-5 pb-5">
         {usages.state === 'loading' && <Loading label="토큰 사용량을 읽는 중" lines={4} />}
         {usages.state === 'error' && <p role="alert" className="text-small text-danger">사용량을 읽지 못했습니다: {usages.message}</p>}
@@ -315,5 +336,99 @@ export function HomeInsights({ projects }: { projects: Project[] }) {
         </ol>
       </Card>
     </>
+  )
+}
+
+
+/** 최종 개발물: 개발할 때 쓴 모델·effort와 토큰 (AI 안 씀이면 0) */
+function DevelopTokenCard({ record }: { record?: VersionRecord }) {
+  const d = record?.develop
+  const u = d?.usage
+  const mode = u?.mode ?? (d?.build ? 'build' : d?.logic ? 'logic' : 'none')
+  const label = mode === 'build' ? '기능 전체 AI' : mode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'
+  const model = u?.model || d?.ai?.model || ''
+  const effort = u?.effort || d?.ai?.effort || ''
+  const cost = u && model ? costOf({ model, input: u.input, output: u.output } as Usage) : undefined
+  return (
+    <Card aria-labelledby="dev-tokens-title">
+      <CardHeader eyebrow="Tokens" titleId="dev-tokens-title"
+        title={<span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="shrink-0">개발 토큰</span>
+          {mode !== 'none' && <span className="min-w-0 truncate text-small font-normal text-fg-3" title={`${model} · ${effort}`}>
+            {[model && shortModel(model), effort].filter(Boolean).join(' · ') || '기본 모델'}</span>}
+        </span>} />
+      <div className="px-5 pb-5">
+        {!d ? <p className="text-small text-fg-3">아직 개발하지 않았습니다.</p> : (
+          <dl className="grid grid-cols-2 gap-3">
+            <div className="min-w-0">
+              <dt className="text-small text-fg-3">방식</dt>
+              <dd className="mt-1 truncate text-label font-medium">{label}</dd>
+              <dd className="text-micro text-fg-3 tabular-nums">{u ? `호출 ${fmt(u.calls)}회` : mode === 'none' ? '호출 0회' : '기록 없음 (예전 개발)'}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-small text-fg-3">토큰</dt>
+              <dd className="mt-1 text-title font-medium tabular-nums">{u ? compact(u.input + u.output) : mode === 'none' ? '0' : '—'}</dd>
+              <dd className="truncate text-micro text-fg-3 tabular-nums">
+                {u ? `입력 ${compact(u.input)} · 출력 ${compact(u.output)}${cost !== undefined ? ` · ${usd(cost)}` : ''}` : mode === 'none' ? '$0' : ''}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+    </Card>
+  )
+}
+
+/** 최종 개발물: 업무 로직 자리 현황 (빈 로직 · AI가 채움 · 사람이 채움)과 빈 로직이 많은 파일. 누르면 1단계 코드 보기에서 연다 */
+function LogicStatusCard({ project, record }: { project: string; record?: VersionRecord }) {
+  const [tree, setTree] = useState<AppFileTree | null>(null)
+  const [error, setError] = useState('')
+  const at = record?.develop?.at
+  useEffect(() => {
+    if (!at) return
+    getAppFiles(project).then((t) => { setTree(t); setError('') }).catch((e) => setError((e as Error).message))
+  }, [project, at])
+  const human = tree ? Math.max(0, tree.holes - tree.empty_holes - tree.ai_holes) : 0
+  const pct = (n: number) => (tree && tree.holes ? `${(n / tree.holes) * 100}%` : '0%')
+  const top = tree ? [...tree.files].filter((f) => f.empty_holes > 0).sort((a, b) => b.empty_holes - a.empty_holes).slice(0, 5) : []
+  return (
+    <Card aria-labelledby="logic-status-title">
+      <CardHeader eyebrow="Logic" title="업무 로직 현황" titleId="logic-status-title"
+        actions={tree ? <span className="text-label font-medium tabular-nums">{tree.holes}곳</span> : undefined} />
+      <div className="space-y-3 px-5 pb-5">
+        {!at ? <p className="text-small text-fg-3">개발하면 업무 로직 자리가 생깁니다.</p>
+          : error ? <p role="alert" className="text-small text-danger">{error}</p>
+          : !tree ? <Loading label="업무 로직을 세는 중" lines={2} /> : (
+            <>
+              <div aria-hidden="true" className="flex h-2.5 overflow-hidden rounded-full bg-sunken">
+                <span className="bg-warn" style={{ width: pct(tree.empty_holes) }} />
+                <span className="bg-ai" style={{ width: pct(tree.ai_holes) }} />
+                <span className="bg-ok" style={{ width: pct(human) }} />
+              </div>
+              <dl className="grid grid-cols-3 gap-2 text-center">
+                <div><dt className="text-micro text-warn">빈 로직</dt><dd className="text-label font-medium tabular-nums">{tree.empty_holes}</dd></div>
+                <div><dt className="text-micro text-ai">AI가 채움</dt><dd className="text-label font-medium tabular-nums">{tree.ai_holes}</dd></div>
+                <div><dt className="text-micro text-ok">사람이 채움</dt><dd className="text-label font-medium tabular-nums">{human}</dd></div>
+              </dl>
+              {tree.ai_files > 0 && <p className="text-small text-ai">기능 전체 AI가 쓴 파일 {tree.ai_files}개 (업무 로직 자리 없이 기능을 통째로 구현)</p>}
+              {top.length > 0 && (
+                <div>
+                  <p className="mb-1 text-micro text-fg-3">빈 로직이 많은 파일</p>
+                  <ul className="space-y-0.5">
+                    {top.map((f) => (
+                      <li key={f.path}>
+                        <button type="button" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_CODE_FILE, { detail: f.path }))}
+                          className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-small hover:bg-sunken" title={f.path}>
+                          <span className="min-w-0 flex-1 truncate font-mono text-micro">{f.path.split('/').pop()}</span>
+                          <span className="shrink-0 rounded-sm bg-warn-soft px-1 text-micro text-warn tabular-nums">빈 {f.empty_holes}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+      </div>
+    </Card>
   )
 }

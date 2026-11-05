@@ -32,7 +32,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /* ------------------------------------------------------------ 회원·권한 */
 /** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
-export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'code_edit'
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'repo_write' | 'app_accounts'
 
 export interface Member {
   id: number
@@ -73,6 +73,7 @@ export interface Notice {
   project: string
   /** 상태 알림(수정 지시·대기·승인 요청·승인 대기·개발 대기·반려) / 일 알림(업로드 분석 완료·ERD 초안·개발 초안) */
   kind: 'directive' | 'waiting' | 'request' | 'decide' | 'develop' | 'rejected' | 'uploaded' | 'erd_draft' | 'developed'
+    | 'merge_request' | 'merged' | 'merge_rejected'
   at: string
   page: 'spec' | 'erd' | 'final' | 'develop'
   version: string
@@ -175,21 +176,97 @@ export async function stopPreview(project: string): Promise<PreviewStatus> {
 /** 최종 개발물 코드 폴더의 파일 (빈 업무 로직·사람이 고친 파일 표시) */
 export interface AppFile { path: string; size: number; generated: boolean; edited: boolean; holes: number; empty_holes: number
   /** 빈 로직만 AI가 채운 자리 수, 기능 전체 AI(또는 AI 뼈대)가 쓴 파일인지 */
-  ai_holes: number; ai_file: boolean }
-export interface AppFileTree { files: AppFile[]; holes: number; empty_holes: number; edited: number; ai_holes: number; ai_files: number }
+  ai_holes: number; ai_file: boolean
+  /** 그 브랜치 작업 폴더에서 커밋하지 않은 변경 (고침·새 파일·지움) */
+  changed: 'M' | 'A' | 'D' | null }
+export interface AppFileTree { branch: string; changes: number; deleted: string[]; files: AppFile[]; holes: number; empty_holes: number; edited: number; ai_holes: number; ai_files: number }
 export interface AppFileContent extends AppFile { content: string; hole_list: { name: string; line: number; empty: boolean; ai: boolean }[] }
 
-export async function getAppFiles(project: string): Promise<AppFileTree> {
-  return (await (await request(`/develop/files?${query({ project })}`)).json()) as AppFileTree
+export async function getAppFiles(project: string, branch = 'main'): Promise<AppFileTree> {
+  return (await (await request(`/develop/files?${query({ project, branch })}`)).json()) as AppFileTree
 }
 
-export async function getAppFile(project: string, path: string): Promise<AppFileContent> {
-  return (await (await request(`/develop/file?${query({ project, path })}`)).json()) as AppFileContent
+export async function getAppFile(project: string, path: string, branch = 'main'): Promise<AppFileContent> {
+  return (await (await request(`/develop/file?${query({ project, path, branch })}`)).json()) as AppFileContent
 }
 
-export async function saveAppFile(project: string, path: string, content: string): Promise<AppFileContent> {
-  const res = await request('/develop/file', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, path, content }) })
+/** 브랜치 작업 폴더의 파일을 고쳐 저장 (main은 서버가 거부). 커밋은 commitBranch('저장하기') */
+export async function saveAppFile(project: string, path: string, content: string, branch: string): Promise<AppFileContent> {
+  const res = await request('/develop/file', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, path, content, branch }) })
   return (await res.json()) as AppFileContent
+}
+
+/* ------------------------------------------------------------ 최종 개발물 코드 저장소 (브랜치·커밋·합치기 요청, 서버 services/repo.py) */
+export interface RepoBranch {
+  name: string; head: string; author: string; date: string; subject: string
+  /** main에 없는 커밋 수 / main에만 있는 커밋 수 */
+  ahead: number; behind: number
+  /** 커밋하지 않은 변경 수 */
+  changes: number
+  protected: boolean
+  owner: { id: number; name: string } | null
+  /** 열린 합치기 요청 ID */
+  request: number | null
+}
+export interface MergeRequest {
+  id: number; branch: string; note: string; by: { id: number; name: string }; at: string
+  status: 'open' | 'merged' | 'rejected'; head: string; ahead: number
+  /** 마지막 합치기에서 충돌한 파일 */
+  conflicts: string[]
+  commit?: string; reason?: string; done_by?: { id: number; name: string }; done_at?: string
+}
+export interface RepoOverview { branches: RepoBranch[]; requests: MergeRequest[]; version: string; main: string }
+export interface RepoRef { type: 'branch' | 'tag' | 'remote' | 'head'; name: string }
+export interface RepoCommit { sha: string; parents: string[]; author: string; email: string; date: string; subject: string; refs: RepoRef[]; ai: boolean }
+export interface DiffFile { path: string; status: 'A' | 'M' | 'D' | string; diff: string; truncated: boolean }
+export interface CommitDetail extends Omit<RepoCommit, 'refs'> { body: string; files: DiffFile[] }
+
+export async function getRepo(project: string): Promise<RepoOverview> {
+  return (await (await request(`/develop/repo?${query({ project })}`)).json()) as RepoOverview
+}
+
+export async function getRepoLog(project: string, limit = 80): Promise<RepoCommit[]> {
+  return ((await (await request(`/develop/repo/log?${query({ project, limit })}`)).json()) as { commits: RepoCommit[] }).commits
+}
+
+export async function getRepoCommit(project: string, sha: string): Promise<CommitDetail> {
+  return (await (await request(`/develop/repo/commit?${query({ project, sha })}`)).json()) as CommitDetail
+}
+
+export async function getBranchDiff(project: string, branch: string): Promise<{ branch: string; ahead: number; behind: number; files: DiffFile[] }> {
+  return (await (await request(`/develop/repo/diff?${query({ project, branch })}`)).json()) as { branch: string; ahead: number; behind: number; files: DiffFile[] }
+}
+
+export async function createBranch(project: string, name: string, from = 'main'): Promise<RepoBranch> {
+  return (await (await post('/develop/repo/branch', { project, name, from })).json()) as RepoBranch
+}
+
+export async function deleteBranch(project: string, name: string): Promise<void> {
+  await request(`/develop/repo/branch?${query({ project, name })}`, { method: 'DELETE' })
+}
+
+export async function commitBranch(project: string, branch: string, message: string, paths?: string[]): Promise<{ commit: string; files: string[] }> {
+  return (await (await post('/develop/repo/commit', { project, branch, message, paths })).json()) as { commit: string; files: string[] }
+}
+
+export async function updateBranch(project: string, branch: string): Promise<{ merged: boolean; message: string }> {
+  return (await (await post('/develop/repo/update-branch', { project, branch })).json()) as { merged: boolean; message: string }
+}
+
+export async function requestMerge(project: string, branch: string, note: string): Promise<MergeRequest> {
+  return (await (await post('/develop/repo/request', { project, branch, note })).json()) as MergeRequest
+}
+
+export async function mergeRequest(project: string, request_id: number): Promise<MergeRequest> {
+  return (await (await post('/develop/repo/merge', { project, request_id })).json()) as MergeRequest
+}
+
+export async function rejectRequest(project: string, request_id: number, reason: string): Promise<MergeRequest> {
+  return (await (await post('/develop/repo/reject', { project, request_id, reason })).json()) as MergeRequest
+}
+
+export async function checkRemote(project: string): Promise<GitSettings> {
+  return (await (await post('/develop/repo/fetch', { project })).json()) as GitSettings
 }
 
 /** 실행 미리보기 터미널: 빌드·실행 명령과 출력 + 앱 서버 로그 */
@@ -199,14 +276,15 @@ export async function getPreviewTerminal(project: string): Promise<PreviewTermin
   return (await (await request(`/preview/${encodeURIComponent(project)}/terminal`)).json()) as PreviewTerminal
 }
 
-export interface GitSide { url: string; branch: string; has_token: boolean }
-export type GitSettings = Record<'frontend' | 'backend', GitSide>
+/** 원격 하나 (화면·백엔드·DB를 한 저장소에). ahead·behind는 마지막으로 받은(원격 확인·올리기) origin 기준, 없으면 null */
+export interface GitSettings { url: string; branch: string; has_token: boolean; ahead: number | null; behind: number | null; exists: boolean
+  checked_at?: string; error?: string }
 
 export async function getGitSettings(project: string): Promise<GitSettings> {
   return (await (await request(`/develop/git?${query({ project })}`)).json()) as GitSettings
 }
 
-export async function saveGitSettings(project: string, body: Record<'frontend' | 'backend', { url: string; branch: string; token: string }>): Promise<GitSettings> {
+export async function saveGitSettings(project: string, body: { url: string; branch: string; token: string }): Promise<GitSettings> {
   return (await (await post('/develop/git', { project, ...body })).json()) as GitSettings
 }
 

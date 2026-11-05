@@ -13,6 +13,7 @@ export const NOTICE_KIND: Record<Notice['kind'], { tone: Tone; label: string }> 
   request: { tone: 'info', label: '승인 요청' }, decide: { tone: 'info', label: '승인 대기' }, develop: { tone: 'ok', label: '개발 대기' },
   rejected: { tone: 'danger', label: '반려' },
   uploaded: { tone: 'neutral', label: '분석 완료' }, erd_draft: { tone: 'neutral', label: 'ERD 초안' }, developed: { tone: 'ok', label: '개발 초안' },
+  merge_request: { tone: 'info', label: '합치기 요청' }, merged: { tone: 'ok', label: '합치기 완료' }, merge_rejected: { tone: 'danger', label: '합치기 반려' },
 }
 
 /** 나에게 온 알림: 화면을 열 때, 30초마다, 알림이 바뀌었을 때 다시 읽는다. dismiss는 확인(나에게서만 지움) */
@@ -32,14 +33,15 @@ export function useNotices(reloadKey?: unknown) {
   return { list, dismiss }
 }
 
-/** 알림 한 줄: 누르면 그 화면으로, '확인'을 누르면 사라진다 */
+/** 알림 한 줄: 제목을 누르면 그 화면으로(알림은 남김), '확인'(✓)을 누르면 그 화면으로 가면서 알림을 지운다 */
 export function NoticeItem({ n, navigate, onDismiss, compact, showProject }: {
   n: Notice; navigate: ShellBase['navigate']; onDismiss: (n: Notice) => void; compact?: boolean; showProject?: boolean
 }) {
   const kind = NOTICE_KIND[n.kind] ?? { tone: 'neutral' as Tone, label: '알림' }
+  const go = () => navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })
   return (
     <li className={cx('flex items-start gap-1', compact ? 'rounded-md hover:bg-sunken' : '')}>
-      <button type="button" onClick={() => navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })}
+      <button type="button" onClick={go} title="이 화면으로 (알림은 남김)"
         className={cx('flex min-w-0 flex-1 items-start gap-2 rounded-md text-left', compact ? 'px-2 py-1.5' : 'px-3 py-2.5 hover:bg-sunken')}>
         {compact ? <BellSimple size={13} className="mt-0.5 shrink-0 text-fg-3" aria-hidden="true" /> : <Badge tone={kind.tone}>{kind.label}</Badge>}
         <span className="min-w-0 flex-1">
@@ -49,9 +51,9 @@ export function NoticeItem({ n, navigate, onDismiss, compact, showProject }: {
           </span>
         </span>
       </button>
-      <button type="button" onClick={() => onDismiss(n)} aria-label={`알림 확인: ${n.title}`} title="확인 (나에게서 지움)"
+      <button type="button" onClick={() => { onDismiss(n); go() }} aria-label={`확인하고 이동: ${n.title}`} title="확인: 이 화면으로 가고 알림을 지움"
         className={cx('shrink-0 rounded-md text-fg-3 hover:bg-sunken hover:text-fg', compact ? 'mt-1 p-1' : 'mt-2 inline-flex items-center gap-1 px-2 py-1 text-small')}>
-        <Check size={compact ? 13 : 14} aria-hidden="true" />{!compact && '확인'}
+        <Check size={compact ? 13 : 14} aria-hidden="true" />{!compact && '확인하고 이동'}
       </button>
     </li>
   )

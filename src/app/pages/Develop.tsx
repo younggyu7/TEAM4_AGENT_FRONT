@@ -1,13 +1,14 @@
 import { ArrowRight, Check, Copy, GitBranch, Play, Stop } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { apiUrl, appUrl, getPreviewAccounts, getPreviewStatus, previewUrl, stopPreview, type Job, type PreviewAccount, type PreviewStatus } from '../../api'
+import { apiUrl, appUrl, getGitSettings, getPreviewAccounts, getPreviewStatus, getRepo, previewUrl, stopPreview, type GitSettings, type Job, type PreviewAccount, type PreviewStatus, type RepoBranch } from '../../api'
 import { formatDate } from '../../labels'
 import { shortModel } from '../lib/pricing'
 import type { VersionRecord } from '../../types'
 import { GitDialog } from '../components/DevelopActions'
-import { CodeBrowser } from '../components/CodeBrowser'
+import { CodeBrowser, OPEN_CODE_FILE } from '../components/CodeBrowser'
 import { JobPanel } from '../components/JobPanel'
 import { PreviewTerminal } from '../components/PreviewTerminal'
+import { useRepoBranch, useRepoVersion } from '../lib/repo'
 import { can, NEEDS, type User } from '../lib/session'
 import { Badge, Button, Card, CardHeader, cx, ErrorNote } from '../components/ui'
 
@@ -42,8 +43,25 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const [run, setRun] = useState<PreviewStatus | null>(null)
   const [error, setError] = useState('')
   const [gitOpen, setGitOpen] = useState(false)
+  const [branch, setBranch] = useRepoBranch(project)
+  const repoVersion = useRepoVersion()
+  const [branches, setBranches] = useState<RepoBranch[]>([])
+  const [remote, setRemote] = useState<GitSettings | null>(null)
   const developed = record?.develop
   const step: Step = given === '2' || given === '3' ? given : '1'
+  // 오른쪽 '업무 로직 현황'에서 파일을 고르면 1단계(코드 보기)로 옮긴다 (코드 보기가 그 파일을 연다)
+  const [openPath, setOpenPath] = useState('')
+  useEffect(() => {
+    const toCode = (e: Event) => { setOpenPath((e as CustomEvent<string>).detail); if (step !== '1') onStep('1') }
+    window.addEventListener(OPEN_CODE_FILE, toCode)
+    return () => window.removeEventListener(OPEN_CODE_FILE, toCode)
+  }, [step, onStep])
+  // 코드 보기 브랜치 고르기 (오른쪽 '코드 저장소'와 같은 브랜치) · 3단계 원격 상태
+  useEffect(() => {
+    if (!developed) return
+    getRepo(project).then((r) => setBranches(r.branches)).catch(() => setBranches([]))
+    getGitSettings(project).then(setRemote).catch(() => setRemote(null))
+  }, [project, developed, repoVersion, job?.status])
   useEffect(() => {
     if (!developed) return
     let alive = true
@@ -69,8 +87,9 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
       status: developing ? '개발 중' : developed ? `완료 ${formatDate(developed.at)}` : '개발 대기', tone: developed ? 'ok' : developing ? 'info' : 'warn' },
     { id: '2', label: '실행 (Docker)', done: run?.status === 'running',
       status: !developed ? '1단계 후' : !run ? '확인 중' : !run.backend ? '백엔드 없음' : RUN[run.status].label, tone: state?.tone ?? 'neutral' },
-    { id: '3', label: 'Git', done: Boolean(record.git),
-      status: !developed ? '1단계 후' : record.git ? `올림 ${formatDate(record.git.at)}` : '안 올림', tone: record.git ? 'ok' : 'neutral' },
+    { id: '3', label: 'Git', done: Boolean(record.git) && remote?.ahead === 0,
+      status: !developed ? '1단계 후' : remote?.ahead ? `원격보다 ${remote.ahead}개 앞섬` : record.git ? `올림 ${formatDate(record.git.at)}` : '안 올림',
+      tone: record.git && !remote?.ahead ? 'ok' : 'neutral' },
   ]
   return (
     <Card aria-labelledby="develop-title">
@@ -191,8 +210,15 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
       )}
       {step === '1' && developed && (
         <section aria-label="코드" className="mt-4">
-          <h2 className="mb-2 text-label font-semibold">코드 <span className="font-normal text-fg-3">서버 폴더 그대로 · 노란 줄은 빈 업무 로직(기본 동작만)</span></h2>
-          <CodeBrowser project={project} canEdit={can(user, 'code_edit') && job?.status !== 'running'} refreshKey={developed.at} />
+          <h2 className="mb-2 flex flex-wrap items-center gap-2 text-label font-semibold">코드
+            <select aria-label="코드 브랜치" value={branch} onChange={(e) => setBranch(e.target.value)}
+              className="min-h-8 rounded-md border border-control bg-card px-2 text-small font-normal text-fg">
+              {(branches.length ? branches : [{ name: 'main', protected: true } as RepoBranch]).map((b) => (
+                <option key={b.name} value={b.name}>{b.name}{b.protected ? ' (보호 · 읽기만)' : b.changes ? ` · 저장 안 한 변경 ${b.changes}` : ''}</option>
+              ))}
+            </select>
+            <span className="font-normal text-fg-3">노란 줄은 빈 업무 로직(기본 동작만) · 브랜치는 오른쪽 '코드 저장소'에서 만듭니다</span></h2>
+          <CodeBrowser project={project} branch={branch} canEdit={can(user, 'repo_write')} refreshKey={developed.at} openPath={openPath} />
         </section>
       )}
 
@@ -222,7 +248,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                 </>
               )}
           </Row>
-          {can(user, 'code_edit') && <Row label="시연 계정"><Accounts project={project} running={run?.status === 'running'} /></Row>}
+          {can(user, 'app_accounts') && <Row label="시연 계정"><Accounts project={project} running={run?.status === 'running'} /></Row>}
           <Row label="실행 방식">
             <span className="text-small text-fg-3">앱 폴더의 Dockerfile·docker-compose.yml로 프로젝트마다 따로 띄우는 독립 앱입니다 (화면·서버 한 이미지 + 앱 DB). 우리 서비스와 분리되고, 같은 네트워크의 팀원 PC에서도 위 주소로 열립니다.</span>
           </Row>
@@ -237,25 +263,29 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
 
       {step === '3' && (
         <dl className="divide-y divide-line text-label">
-          <Row label="Git">
+          <Row label="원격 저장소">
             <div className="space-y-2">
-              {record.git ? (
-                <ul className="space-y-0.5">
-                  {Object.entries(record.git.pushed).map(([side, at]) => (
-                    <li key={side}><strong>{side === 'frontend' ? '화면' : '백엔드'}</strong> {at} <span className="text-fg-3">{record.git!.urls[side]}</span></li>
-                  ))}
-                  <li className="text-small text-fg-3">{formatDate(record.git.at)} · {record.git.by.name}</li>
-                </ul>
-              ) : <p className="text-fg-3">아직 올리지 않았습니다.</p>}
-              <Button variant={record.git ? 'secondary' : 'ok'} icon={<GitBranch />} disabled={!allowed || !developed || job?.status === 'running'}
-                title={!allowed ? NEEDS.develop : !developed ? '1단계 개발을 먼저 하세요' : '서버의 코드를 화면·백엔드 저장소에 올립니다 (처음엔 저장소 설정)'}
+              {remote?.url
+                ? <p><span className="font-mono text-small">{remote.url}</span> · <code>{remote.branch}</code>
+                    <span className="ml-2">{remote.ahead === null ? <Badge tone="neutral">원격 확인 전</Badge>
+                      : remote.behind ? <Badge tone="danger">원격에 서버에 없는 커밋 {remote.behind}개</Badge>
+                      : remote.ahead ? <Badge tone="warn">원격보다 {remote.ahead}개 앞섬</Badge> : <Badge tone="ok">원격과 같음</Badge>}</span></p>
+                : <p className="text-fg-3">원격 저장소를 아직 정하지 않았습니다.</p>}
+              {record.git && (
+                <p className="text-small text-fg-3">마지막 올림 {formatDate(record.git.at)} · {record.git.by.name}
+                  {record.git.commit ? <> · {record.git.branch}@<code>{record.git.commit.slice(0, 10)}</code></> : record.git.pushed ? ` · ${Object.values(record.git.pushed).join(', ')} (예전 두 저장소 방식)` : ''}</p>
+              )}
+              <Button variant={remote?.ahead ? 'ok' : 'secondary'} icon={<GitBranch />} disabled={!allowed || !developed || job?.status === 'running'}
+                title={!allowed ? NEEDS.develop : !developed ? '1단계 개발을 먼저 하세요' : '코드 저장소의 main과 최종본 태그를 원격에 올립니다 (처음엔 원격 설정)'}
                 onClick={() => setGitOpen(true)}>
-                Git에 올리기
+                원격 설정 · 올리기
               </Button>
             </div>
           </Row>
-          <Row label="올리는 내용">
-            <span className="text-small text-fg-3">화면 저장소: frontend/와 화면·API 문서 · 백엔드 저장소: backend/·db/·개발 스펙 문서. 빌드 결과·node_modules는 올리지 않습니다.</span>
+          <Row label="저장소 구성">
+            <span className="text-small text-fg-3">서버의 코드 폴더 하나가 git 저장소입니다. 화면(frontend)·백엔드(backend)·DB(db)·개발 스펙(spec)을 한 저장소에 같이 올립니다.
+              main은 최종 개발하기(AI 커밋, 태그 final-v최종본)와 개발 파트장의 합치기로만 바뀌고, 개발 파트는 브랜치에서 고쳐 저장하기 → 합치기 요청을 합니다.
+              빌드 결과·node_modules·미리보기·생성기 기록·시연 계정은 커밋하지 않습니다. 원격에 서버에 없는 커밋이 있으면 덮어쓰지 않고 멈춥니다.</span>
           </Row>
         </dl>
       )}
