@@ -204,7 +204,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         ? <FinalView design={design} project={route.project} version={route.version} record={record} finalized={finalized}
             onOpenEntity={(id) => open('erd', id)} onOpenDevSpec={(name) => open('dev-spec', name)}
             review={reviewJob && [reviewJob.base, reviewJob.new_version].includes(route.version) ? reviewJob : undefined}
-            canDecide={perm.final} onDecided={shell.onReloadProjects}
+            canDecide={perm.final} canFill={perm.erdConfirm} onDecided={shell.onReloadProjects}
             previous={versions.filter((v) => v.stage === 'final' && v.design_version !== route.version && v.approval?.decision === 'changes'
               && v.approval.at < (record?.created_at ?? '')).sort((a, b) => b.approval!.at.localeCompare(a.approval!.at))[0]} />
         : route.page === 'develop'

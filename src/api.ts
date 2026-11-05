@@ -32,7 +32,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /* ------------------------------------------------------------ 회원·권한 */
 /** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
-export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'repo_write' | 'app_accounts' | 'project_delete'
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'preview_stop' | 'repo_write' | 'app_accounts' | 'project_delete'
 
 export interface Member {
   id: number
@@ -312,6 +312,11 @@ export async function getStackStatus(project: string, version: string): Promise<
 
 export async function getStackCatalog(): Promise<StackCatalog> {
   return ((await (await request('/tech-stacks')).json()) as { catalog: StackCatalog }).catalog
+}
+
+/** 예전 최종본의 빠진 개발 스펙 채우기 (업무 동작 설계 LLM 1회 → BEHAVIOR.md 등 다시 쓰기, 데이터 파트장·팀장) */
+export async function fillDevSpec(project: string, version: string): Promise<{ filled: string[]; questions: number; states: number; automations: number }> {
+  return ((await (await post('/projects/dev-spec/fill', { project, version })).json()) as { dev_spec: { filled: string[]; questions: number; states: number; automations: number } }).dev_spec
 }
 
 export async function setTechStackParts(project: string, version: string, parts: Record<'frontend' | 'backend' | 'database', string>): Promise<void> {

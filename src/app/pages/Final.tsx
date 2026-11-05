@@ -1,6 +1,6 @@
 import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useState } from 'react'
-import { decideFinal, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
+import { decideFinal, fillDevSpec, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
@@ -8,11 +8,12 @@ import { StackNote } from '../components/StackChoice'
 import { ZipButton } from '../components/ZipButton'
 import { ARTIFACT_FILES, DEV_SPEC_FILES, fileUrl } from '../lib/artifacts'
 import { refreshVersion, useFile } from '../lib/data'
+import { NEEDS } from '../lib/session'
 import { relationsOf } from '../lib/erd'
 import { FullErd } from './Erd'
 
 // 최종 산출물: 최종본(v<ERD>.1)에 저장된 결과를 보여주기만 한다 (고치는 단계가 아님 — 바꾸려면 ERD 화면에서 새 버전)
-export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, onDecided, previous }: {
+export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, canFill, onDecided, previous }: {
   design: Design
   project: string
   version: string
@@ -25,6 +26,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
   review?: Job
   /** 팀장: 최종 승인·수정 지시·기술 스택을 정할 수 있다 */
   canDecide: boolean
+  canFill: boolean
   /** 승인·수정 지시를 남긴 뒤 버전 기록을 다시 읽는다 */
   onDecided: () => void
   /** 이 최종본보다 먼저 받은 수정 지시 (그 처리 결과를 보고 승인한다) */
@@ -88,7 +90,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         <FileList project={project} version={version} files={ARTIFACT_FILES} />
       </Card>
 
-      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} />
+      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canFill={canFill} />
     </div>
   )
 }
@@ -431,24 +433,28 @@ function DdlCard({ project, version }: { project: string; version: string }) {
 }
 
 /** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 10개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
-function DevSpecFilesCard({ design, project, version, onOpen }: {
+function DevSpecFilesCard({ design, project, version, onOpen, canFill }: {
   design: Design
   project: string
   version: string
   onOpen: (name: string) => void
+  canFill: boolean
 }) {
   const meta = design.meta.dev_spec
+  // 만든 뒤에 추가된 개발 스펙 문서(예: 업무 동작 분석 전 최종본의 BEHAVIOR.md). data_model.json은 설계 산출물이라 늘 있다
+  const missing = meta ? DEV_SPEC_FILES.filter((f) => f.name !== 'data_model.json' && !meta.files.includes(f.name)) : []
   return (
     <Card aria-labelledby="final-dev-spec">
       <CardHeader eyebrow="Dev spec" title="개발 스펙 파일" titleId="final-dev-spec">
         <p className="mt-1 text-small text-fg-3">
           {meta
-            ? `개발 AI(Claude Code 등)가 읽고 개발할 문서 10개입니다. 위 설계 산출물로 코드가 같은 틀(${meta.format})로 만들고, 1번부터 읽습니다.`
+            ? `개발 AI(Claude Code 등)가 읽고 개발할 문서 ${DEV_SPEC_FILES.length}개입니다. 위 설계 산출물로 코드가 같은 틀(${meta.format})로 만들고, 1번부터 읽습니다.`
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
       {/* 기술 스택은 기능 명세에서 확정한다 (원문이 정했으면 원문). 여기서는 보기만 */}
       {meta && <StackNote project={project} version={version} className="mx-5 mb-3" />}
+      {missing.length > 0 && <FillDevSpec project={project} version={version} missing={missing.map((f) => f.name)} canFill={canFill} />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
           {DEV_SPEC_FILES.map((d, i) => (
@@ -505,5 +511,38 @@ function FileList({ project, version, files: candidates }: { project: string; ve
         </li>
       ))}
     </ul>
+  )
+}
+
+/** 빠진 개발 스펙 채우기: 업무 동작 분석 전에 만든 예전 최종본. 업무 동작 설계를 한 번 묻고(LLM 1회) 개발 스펙을 다시 쓴다 */
+function FillDevSpec({ project, version, missing, canFill }: { project: string; version: string; missing: string[]; canFill: boolean }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const fill = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await fillDevSpec(project, version)
+      refreshVersion(project, version)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div role="note" className="mx-5 mb-3 rounded-lg border border-warn/40 bg-warn-soft px-3 py-2.5 text-small">
+      <p className="flex flex-wrap items-center gap-2 text-warn">
+        <WarningCircle size={16} aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          이 최종본은 {missing.join(' · ')} 기능이 생기기 전에 만들어져 이 파일이 없습니다.
+          채우기를 누르면 업무 동작 설계를 한 번(LLM 1회) 하고 개발 스펙을 다시 씁니다. 설계 산출물과 기술 스택은 그대로입니다.
+        </span>
+        <Button size="sm" variant="secondary" disabled={!canFill || busy} title={canFill ? undefined : NEEDS.erd_confirm} onClick={() => void fill()}>
+          {busy ? '채우는 중…' : '빠진 파일 채우기'}
+        </Button>
+      </p>
+      {error && <ErrorNote message={error} />}
+    </div>
   )
 }

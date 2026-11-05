@@ -77,6 +77,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
     return <Card><ErrorNote message="팀장이 승인한 최종본이 없습니다." hint="최종 산출물에서 팀장이 승인하면 이 화면이 열립니다." /></Card>
   }
   const allowed = can(user, 'develop')
+  const canStop = can(user, 'preview_stop')
   const developing = job?.source === 'develop' && job.status === 'running'
   const stop = () => stopPreview(project).then(setRun).catch((e) => setError((e as Error).message))
   const state = run ? RUN[run.status] : undefined
@@ -242,7 +243,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                       ? `쓰는 동안은 켜 두고 ${Math.round(run.idle_limit / 60)}분 동안 요청이 없으면 끕니다${run.idle_seconds !== null ? ` (마지막 사용 ${Math.floor(run.idle_seconds / 60)}분 전)` : ''}. 동시에 3개까지.`
                       : run.message || (run.backend ? "위의 '결과물 미리보기'를 누르면 켭니다 (처음엔 빌드로 몇 분)." : '')}</span>
                     {run.status === 'running' && (
-                      <Button size="sm" variant="ghost" icon={<Stop />} disabled={!allowed} title={allowed ? undefined : NEEDS.develop} onClick={() => void stop()}>끄기</Button>
+                      <Button size="sm" variant="ghost" icon={<Stop />} disabled={!canStop} title={canStop ? undefined : NEEDS.preview_stop} onClick={() => void stop()}>끄기</Button>
                     )}
                   </span>
                   {!run.backend && <p className="mt-1 text-small text-warn">서버 코드가 없어(서버 틀이 없는 기술 스택) 실행하지 않고 예시 데이터 화면을 엽니다.</p>}

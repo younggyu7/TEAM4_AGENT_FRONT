@@ -4,6 +4,7 @@ import { apiUrl } from '../../api'
 export const ARTIFACT_FILES: { name: string; label: string }[] = [
   { name: 'functions.md', label: '기능 명세서' },
   { name: 'erd.md', label: 'ERD 문서' },
+  { name: 'erd.mmd', label: 'ERD 다이어그램 (Mermaid)' },
   { name: 'schema.sql', label: 'DDL (PostgreSQL)' },
   { name: 'requirements.md', label: '요구사항 목록' },
   { name: 'traceability.md', label: '추적표' },
@@ -20,6 +21,8 @@ export const DEV_SPEC_FILES: { name: string; label: string; summary: string }[] 
   { name: 'PRD.md', label: '제품 요구사항', summary: '사업 개요, 사용자, 개발 범위, 비기능 요구사항, 미확정 사항' },
   { name: 'ARCHITECTURE.md', label: '시스템 구성', summary: '기술 스택, 모듈, 외부 연계, 보안, 성능, 배포 제약' },
   { name: 'DATABASE.md', label: '데이터베이스', summary: '테이블·관계·업무 제약·보안 컬럼 (기준은 schema.sql)' },
+  // 개발 스펙 생성 파일은 아니지만(설계 산출물) 개발 AI가 테이블 구조를 기계로 읽을 수 있게 함께 보여 준다
+  { name: 'data_model.json', label: '데이터 모델 (JSON)', summary: '테이블·컬럼·관계 구조화 데이터 (schema.sql·ERD를 만든 원본)' },
   { name: 'API.md', label: 'API', summary: '기능별 API: 경로·권한·요청·응답·오류, 필드마다 DB 컬럼' },
   { name: 'openapi.yaml', label: 'OpenAPI 정의', summary: 'API.md와 같은 내용의 OpenAPI 3.1 (기계가 읽는 기준)' },
   { name: 'BEHAVIOR.md', label: '업무 동작', summary: '상태 전환, 자동 처리, 요청에 없는 값의 출처' },

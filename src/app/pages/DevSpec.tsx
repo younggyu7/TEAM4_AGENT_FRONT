@@ -116,7 +116,7 @@ function SpecDoc({ project, version, name, summary }: { project: string; version
           <Button size="sm" icon={<DownloadSimple />} onClick={download}>받기</Button>
         </span>
       </div>
-      {name.endsWith('.yaml')
+      {/\.(ya?ml|json)$/.test(name)
         ? <pre className="max-h-[70vh] overflow-auto rounded-lg bg-sunken p-4 font-mono text-small leading-relaxed"><code>{text}</code></pre>
         : <Markdown text={text} idPrefix={name.replace(/\W/g, '-')} toc />}
     </>
