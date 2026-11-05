@@ -84,8 +84,9 @@ export function DocsView({ page, design, saved, versions, finalizedAt, project, 
         titleId="docs-title"
       />
       {/* 산출물 안의 탭: 왼쪽 메뉴는 그대로 두고 여기서만 바꾼다 */}
-      <nav aria-label="산출물 종류" className="overflow-x-auto border-b border-line px-5">
-        <ul className="flex gap-1">
+      {/* 탭이 많아도 가로 스크롤 없이 다음 줄로 넘긴다 */}
+      <nav aria-label="산출물 종류" className="border-b border-line px-5">
+        <ul className="flex flex-wrap gap-x-1">
           {DOC_PAGES.map((p) => (
             <li key={p.id}>
               <button
