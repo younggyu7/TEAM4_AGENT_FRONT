@@ -128,12 +128,13 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
   )
 }
 
-function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; onJump: (id: string) => void }) {
+/** 확인 항목 한 줄 (질문 답·체크·지적 처리). 기능 명세의 기능 펼침 안에서도 그 기능 항목만 보여 줄 때 쓴다 (onJump 없으면 이동 링크 없음) */
+export function ReviewRow({ item, draft, onJump, compact }: { item: ReviewItem; draft: Draft; onJump?: (id: string) => void; compact?: boolean }) {
   const detailId = useId()
   const tone = item.kind === 'check' || item.issue?.severity === 'ERROR' ? 'danger' : item.question ? 'info' : 'warn'
 
   return (
-    <li className={cx('grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto]', item.resolved && 'bg-sunken/60')}>
+    <li className={cx('grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]', compact ? 'px-3 py-3' : 'px-5 py-4', item.resolved && 'bg-sunken/60')}>
       <div className="min-w-0">
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
           <Badge tone={tone}>{KIND_LABEL[item.kind]}{item.issue && ` · ${item.issue.severity === 'ERROR' ? '오류' : item.issue.severity === 'WARNING' ? '경고' : '참고'}`}</Badge>
@@ -143,7 +144,7 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
         </div>
         <p className={cx('text-label', item.resolved ? 'text-fg-3' : 'text-fg')}>{item.title}</p>
         {item.detail && <p id={detailId} className="mt-1 text-small whitespace-pre-line text-fg-3">{item.detail}</p>}
-        {item.targetId && (
+        {item.targetId && onJump && (
           <button
             type="button"
             onClick={() => onJump(item.targetId!)}
@@ -162,7 +163,7 @@ function ReviewRow({ item, draft, onJump }: { item: ReviewItem; draft: Draft; on
         </fieldset>
       </div>
 
-      <fieldset disabled={draft.readOnly} className="sm:pt-6">
+      <fieldset disabled={draft.readOnly} className={compact ? 'sm:pt-1' : 'sm:pt-6'}>
         {item.kind === 'remark' || item.kind === 'directive' ? null : item.auto ? (
           <span className="inline-flex items-center gap-1.5 text-small text-fg-3"><Wrench size={14} aria-hidden="true" />고치면 저절로 해결</span>
         ) : !item.question && (

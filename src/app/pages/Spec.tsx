@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { FunctionSpec } from '../../types'
 import { ExceptionEditor, IOEditor, ListEditor } from '../components/editors'
 import { useDraftSave } from '../components/DraftSave'
-import { ReviewPanel } from '../components/ReviewPanel'
+import { ReviewPanel, ReviewRow } from '../components/ReviewPanel'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, fmt, Label, Segmented, TextArea, TextInput } from '../components/ui'
 import type { Draft } from '../lib/draft'
-import { assumptionId, openCountByTarget, ruleMark, summarize, type ReviewItem } from '../lib/review'
+import { assumptionId, KIND_LABEL, ruleMark, summarize, type ReviewItem } from '../lib/review'
 
-type Tab = 'draft' | 'review'
+type Tab = 'draft' | 'review' | 'overview'
 
 export interface EditorProps {
   draft: Draft
@@ -33,7 +33,7 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
   const saving = useDraftSave('spec', draft)
   const [query, setQuery] = useState('')
   const [flaggedOnly, setFlaggedOnly] = useState(false)
-  const open = useMemo(() => openCountByTarget(items), [items])
+  const open = useMemo(() => openItemsByTarget(items), [items])
   const s = summarize(items)
 
   useEffect(() => {
@@ -73,12 +73,15 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
           options={[
             { value: 'draft', label: '초안 편집', count: draft.functions.length },
             { value: 'review', label: '확인 필요', count: s.left },
+            { value: 'overview', label: '전체 보기' },
           ]}
         />
         {saving.result}
       </div>
 
-      {tab === 'review' ? (
+      {tab === 'overview' ? (
+        <FunctionOverview draft={draft} open={open} onPick={(id) => { setTab('draft'); onFocus(id) }} />
+      ) : tab === 'review' ? (
         <div className="border-t border-line">
           <ReviewPanel
             items={items}
@@ -113,7 +116,7 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
                       key={f.function_id}
                       fn={f}
                       expanded={focus === f.function_id}
-                      openCount={open.get(f.function_id) ?? 0}
+                      openItems={open.get(f.function_id) ?? []}
                       edited={Boolean(draft.state.functions[f.function_id])}
                       onToggle={() => onFocus(focus === f.function_id ? undefined : f.function_id)}
                       draft={draft}
@@ -129,10 +132,26 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
   )
 }
 
-function FunctionRow({ fn, expanded, openCount, edited, onToggle, draft }: {
+/** 기능 ID별 아직 해결하지 않은 확인 항목 (목록 배지·펼침 안 목록·전체 보기) */
+function openItemsByTarget(items: ReviewItem[]): Map<string, ReviewItem[]> {
+  const m = new Map<string, ReviewItem[]>()
+  for (const i of items) if (!i.resolved && i.targetId) m.set(i.targetId, [...(m.get(i.targetId) ?? []), i])
+  return m
+}
+
+/** '확인 3' 대신 종류별로: '확인 질문 1 · 확인 필요 규칙 2' */
+function kindsText(items: ReviewItem[]): string {
+  const counts = new Map<string, number>()
+  for (const i of items) counts.set(KIND_LABEL[i.kind], (counts.get(KIND_LABEL[i.kind]) ?? 0) + 1)
+  return [...counts].map(([k, n]) => `${k} ${n}`).join(' · ')
+}
+
+const RULE_KINDS = new Set(['unconfirmed', 'assumption'])
+
+function FunctionRow({ fn, expanded, openItems, edited, onToggle, draft }: {
   fn: FunctionSpec
   expanded: boolean
-  openCount: number
+  openItems: ReviewItem[]
   edited: boolean
   onToggle: () => void
   draft: Draft
@@ -158,13 +177,25 @@ function FunctionRow({ fn, expanded, openCount, edited, onToggle, draft }: {
         </span>
         <span className="flex items-center gap-1.5">
           {edited && <Badge tone="info">수정됨{draft.editors[fn.function_id] ? ` · ${draft.editors[fn.function_id]}` : ''}</Badge>}
-          {openCount > 0 && <Badge tone="warn">확인 {openCount}</Badge>}
+          {openItems.length > 0 && <span title={kindsText(openItems)}><Badge tone="warn">확인 {openItems.length}</Badge></span>}
           <CaretDown size={16} aria-hidden="true" className={cx('text-fg-3 transition-transform duration-200', expanded && 'rotate-180')} />
         </span>
       </button>
       {expanded && (
         <div id={bodyId} className="border-t border-line px-3 py-4 sm:px-4">
           {/* 고칠 권한이 없으면 입력칸을 모두 끈다 (보기 전용) */}
+          {/* 배지 '확인 n'이 무엇인지: 이 기능의 남은 확인 항목을 모두 여기서 보고 바로 처리한다 (질문 답·체크) */}
+          {openItems.length > 0 && (
+            <section aria-label={`${fn.function_id} 확인할 것`} className="mb-5 rounded-lg border border-warn/40 bg-warn-soft/40">
+              <p className="px-3 pt-2.5 text-label font-medium text-warn">이 기능에서 확인할 것 {openItems.length}건 <span className="font-normal text-fg-3">({kindsText(openItems)})</span></p>
+              {openItems.some((i) => RULE_KINDS.has(i.kind)) && (
+                <p className="px-3 text-micro text-fg-3">확인 필요 규칙·가정은 아래 '업무 규칙'에도 같은 표시가 있습니다. 한쪽에서 체크하면 둘 다 해결됩니다.</p>
+              )}
+              <ul className="divide-y divide-line">
+                {openItems.map((i) => <ReviewRow key={i.id} item={i} draft={draft} compact />)}
+              </ul>
+            </section>
+          )}
           <fieldset disabled={draft.readOnly} className="min-w-0">
             <FunctionForm fn={fn} draft={draft} edited={edited} />
           </fieldset>
@@ -249,5 +280,89 @@ function FunctionForm({ fn, draft, edited }: { fn: FunctionSpec; draft: Draft; e
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * '전체 보기': 모든 기능을 묶음(group)별 작은 칸으로 한눈에. 칸에는 기능 이름만, 마우스를 올리면(또는 키보드로 고르면) 세부가 뜨고
+ * 누르면 초안 편집에서 그 기능을 연다. 사람이 고친 기능은 파란 테두리와 고친 사람, 확인할 것이 남은 기능은 주황 표시.
+ */
+function FunctionOverview({ draft, open, onPick }: { draft: Draft; open: Map<string, ReviewItem[]>; onPick: (id: string) => void }) {
+  const groups = useMemo(() => {
+    const m = new Map<string, FunctionSpec[]>()
+    for (const f of draft.functions) m.set(f.group, [...(m.get(f.group) ?? []), f])
+    return [...m.entries()]
+  }, [draft.functions])
+  const edited = draft.functions.filter((f) => draft.state.functions[f.function_id]).length
+  const flagged = draft.functions.filter((f) => open.has(f.function_id)).length
+  return (
+    <div className="border-t border-line px-5 py-4">
+      <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-small text-fg-3">
+        <span>기능 {fmt(draft.functions.length)}개</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-info" />사람이 고침 {fmt(edited)}</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-warn" />확인할 것 남음 {fmt(flagged)}</span>
+        <span className="ml-auto">마우스를 올리면 세부 · 누르면 편집</span>
+      </div>
+      <div className="space-y-4">
+        {groups.map(([group, fns]) => (
+          <section key={group} aria-label={`${group} 기능`}>
+            <h2 className="mb-1.5 font-mono text-small text-fg-3">{group} <span className="tabular-nums">({fns.length})</span></h2>
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-1.5">
+              {fns.map((f) => <OverviewTile key={f.function_id} fn={f} draft={draft} items={open.get(f.function_id) ?? []} onPick={onPick} />)}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function OverviewTile({ fn, draft, items, onPick }: { fn: FunctionSpec; draft: Draft; items: ReviewItem[]; onPick: (id: string) => void }) {
+  const tipId = `ov-${fn.function_id}`
+  const edited = Boolean(draft.state.functions[fn.function_id])
+  const editor = draft.editors[fn.function_id]
+  const required = items.filter((i) => i.required).length
+  // 오른쪽 끝 칸이면 세부 칸을 왼쪽으로 펼친다 (화면 밖으로 나가지 않게)
+  const [flip, setFlip] = useState(false)
+  const place = (el: HTMLElement) => setFlip(el.getBoundingClientRect().left + 336 > window.innerWidth)
+  return (
+    <li className="group/tile relative" onMouseEnter={(e) => place(e.currentTarget)} onFocus={(e) => place(e.currentTarget)}>
+      <button type="button" onClick={() => onPick(fn.function_id)} aria-describedby={tipId}
+        className={cx('flex h-full min-h-14 w-full flex-col justify-center rounded-md border bg-card px-2.5 py-1.5 text-left transition-colors duration-150 hover:bg-sunken',
+          edited ? 'border-2 border-info' : 'border-line')}>
+        <span className="flex items-start gap-1.5">
+          <span className="line-clamp-2 min-w-0 flex-1 text-small font-medium">{fn.name || <span className="text-danger">이름 없음</span>}</span>
+          {items.length > 0 && (
+            <span className={cx('shrink-0 rounded-sm px-1 text-micro font-semibold tabular-nums', required ? 'bg-warn text-on-primary' : 'bg-warn-soft text-warn')}>
+              {items.length}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 truncate text-micro text-fg-3">
+          <span className="font-mono">{fn.function_id}</span>{edited && <span className="text-info"> · {editor ? `${editor} 수정` : '수정됨'}</span>}
+        </span>
+      </button>
+      {/* 세부: 마우스를 올리거나 키보드로 고르면 보인다 */}
+      <div id={tipId} role="tooltip"
+        className={cx(flip ? 'right-0' : 'left-0', 'pointer-events-none invisible absolute top-full z-40 mt-1 w-80 max-w-[80vw] rounded-lg border border-line bg-card p-3 text-small opacity-0 shadow-lg transition-opacity duration-150 group-hover/tile:visible group-hover/tile:opacity-100 group-hover/tile:delay-200 group-focus-within/tile:visible group-focus-within/tile:opacity-100')}>
+        <p className="font-medium">{fn.name} <span className="font-mono text-micro text-fg-3">{fn.function_id}</span></p>
+        {fn.description && <p className="mt-1 line-clamp-4 text-fg-2">{fn.description}</p>}
+        <p className="mt-1.5 text-micro text-fg-3">
+          행위자 {fn.actors.filter(Boolean).join(', ') || '없음'} · 요구사항 {fn.requirement_ids.length} · 규칙 {fn.business_rules.length} · 처리 순서 {fn.normal_flow.length}단계
+        </p>
+        {edited && <p className="mt-1.5 text-micro text-info">사람이 고침{editor ? ` · ${editor}` : ''}</p>}
+        {items.length > 0 ? (
+          <div className="mt-2 border-t border-line pt-2">
+            <p className="text-micro font-medium text-warn">확인할 것 {items.length}건{required ? ` (필수 ${required})` : ''}</p>
+            <ul className="mt-1 space-y-1">
+              {items.slice(0, 5).map((i) => (
+                <li key={i.id} className="text-micro text-fg-2"><span className="text-fg-3">{KIND_LABEL[i.kind]}</span> · <span className="line-clamp-2 inline">{i.title}</span></li>
+              ))}
+              {items.length > 5 && <li className="text-micro text-fg-3">외 {items.length - 5}건</li>}
+            </ul>
+          </div>
+        ) : <p className="mt-2 text-micro text-ok">확인할 것 없음</p>}
+      </div>
+    </li>
   )
 }
