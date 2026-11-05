@@ -1,4 +1,4 @@
-import { ArrowCounterClockwise, CaretDown, FileText, MagnifyingGlass } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, CaretDown, Check, FileText, MagnifyingGlass } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import type { FunctionSpec } from '../../types'
 import { ExceptionEditor, IOEditor, ListEditor } from '../components/editors'
@@ -34,6 +34,7 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
   const [query, setQuery] = useState('')
   const [flaggedOnly, setFlaggedOnly] = useState(false)
   const open = useMemo(() => openItemsByTarget(items), [items])
+  const done = useMemo(() => checkedItemsByTarget(items), [items])
   const s = summarize(items)
 
   useEffect(() => {
@@ -80,7 +81,7 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
       </div>
 
       {tab === 'overview' ? (
-        <FunctionOverview draft={draft} open={open} onPick={(id) => { setTab('draft'); onFocus(id) }} />
+        <FunctionOverview draft={draft} open={open} done={done} onPick={(id) => { setTab('draft'); onFocus(id) }} />
       ) : tab === 'review' ? (
         <div className="border-t border-line">
           <ReviewPanel
@@ -117,6 +118,7 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
                       fn={f}
                       expanded={focus === f.function_id}
                       openItems={open.get(f.function_id) ?? []}
+                      doneItems={done.get(f.function_id) ?? []}
                       edited={Boolean(draft.state.functions[f.function_id])}
                       onToggle={() => onFocus(focus === f.function_id ? undefined : f.function_id)}
                       draft={draft}
@@ -139,6 +141,23 @@ function openItemsByTarget(items: ReviewItem[]): Map<string, ReviewItem[]> {
   return m
 }
 
+/** 기능 ID별 사람이 처리한 확인 항목 (체크·질문 답. 편집으로 저절로 풀리는 항목은 뺀다) */
+function checkedItemsByTarget(items: ReviewItem[]): Map<string, ReviewItem[]> {
+  const m = new Map<string, ReviewItem[]>()
+  for (const i of items) if (i.resolved && !i.auto && i.targetId) m.set(i.targetId, [...(m.get(i.targetId) ?? []), i])
+  return m
+}
+
+/** 확인 항목을 처리한 사람 (변경 내역: 질문은 질문 ID, 체크는 항목 ID로 남는다).
+ * 예전 기록은 체크를 'n건 바꿈'으로만 남겨 누가 어느 것을 했는지 모른다 → 그때 체크한 사람들 중 하나로 보여 준다.
+ * 변경 내역이 생기기 전에 넣은 답·체크는 기록이 없다 → 비워 두지 않고 그렇다고 적는다 */
+function checkedBy(draft: Draft, item: ReviewItem): string {
+  const by = draft.lastChange[item.id.startsWith('q:') ? item.id.slice(2) : item.id]?.by
+  if (by) return by
+  const legacy = item.question ? [] : [...new Set(draft.log.filter((e) => e.changes.some((c) => c.label === '확인 표시' && !c.target)).map((e) => e.by.name))]
+  return legacy.length ? `${legacy.join('·')} 중 한 명 (이전 기록)` : `누가 ${item.question ? '답했는지' : '확인했는지'} 기록 없음`
+}
+
 /** '확인 3' 대신 종류별로: '확인 질문 1 · 확인 필요 규칙 2' */
 function kindsText(items: ReviewItem[]): string {
   const counts = new Map<string, number>()
@@ -148,10 +167,11 @@ function kindsText(items: ReviewItem[]): string {
 
 const RULE_KINDS = new Set(['unconfirmed', 'assumption'])
 
-function FunctionRow({ fn, expanded, openItems, edited, onToggle, draft }: {
+function FunctionRow({ fn, expanded, openItems, doneItems, edited, onToggle, draft }: {
   fn: FunctionSpec
   expanded: boolean
   openItems: ReviewItem[]
+  doneItems: ReviewItem[]
   edited: boolean
   onToggle: () => void
   draft: Draft
@@ -178,6 +198,7 @@ function FunctionRow({ fn, expanded, openItems, edited, onToggle, draft }: {
         <span className="flex items-center gap-1.5">
           {edited && <Badge tone="info">수정됨{draft.editors[fn.function_id] ? ` · ${draft.editors[fn.function_id]}` : ''}</Badge>}
           {openItems.length > 0 && <span title={kindsText(openItems)}><Badge tone="warn">확인 {openItems.length}</Badge></span>}
+          {doneItems.length > 0 && <span title={`사람이 확인함: ${kindsText(doneItems)}`}><Badge tone="ok">확인함 {doneItems.length}</Badge></span>}
           <CaretDown size={16} aria-hidden="true" className={cx('text-fg-3 transition-transform duration-200', expanded && 'rotate-180')} />
         </span>
       </button>
@@ -194,6 +215,23 @@ function FunctionRow({ fn, expanded, openItems, edited, onToggle, draft }: {
               <ul className="divide-y divide-line">
                 {openItems.map((i) => <ReviewRow key={i.id} item={i} draft={draft} compact />)}
               </ul>
+            </section>
+          )}
+          {/* 사람이 이미 처리한 것도 감추지 않는다: 무엇을 누가 체크·답했는지, 기능을 어떻게 고쳤는지 (체크를 풀면 다시 '확인할 것'으로) */}
+          {(doneItems.length > 0 || edited) && (
+            <section aria-label={`${fn.function_id} 사람이 확인·수정한 것`} className="mb-5 rounded-lg border border-ok/40 bg-ok-soft/30">
+              <p className="px-3 pt-2.5 text-label font-medium text-ok">
+                이 기능에서 사람이 확인·수정한 것{doneItems.length > 0 && <> · 확인 {doneItems.length}건 <span className="font-normal text-fg-3">({kindsText(doneItems)})</span></>}
+              </p>
+              {edited && (
+                <p className="px-3 pt-1 text-small text-info">
+                  기능 수정{draft.editors[fn.function_id] ? ` · ${draft.editors[fn.function_id]}` : ''}{draft.lastChange[fn.function_id] ? ` — ${draft.lastChange[fn.function_id].what}` : ''}
+                </p>
+              )}
+              <ul className="mt-1 divide-y divide-line">
+                {doneItems.map((i) => <ReviewRow key={i.id} item={i} draft={draft} by={checkedBy(draft, i)} compact />)}
+              </ul>
+              {doneItems.length === 0 && <div className="pb-2.5" />}
             </section>
           )}
           <fieldset disabled={draft.readOnly} className="min-w-0">
@@ -285,9 +323,15 @@ function FunctionForm({ fn, draft, edited }: { fn: FunctionSpec; draft: Draft; e
 
 /**
  * '전체 보기': 모든 기능을 묶음(group)별 작은 칸으로 한눈에. 칸에는 기능 이름만, 마우스를 올리면(또는 키보드로 고르면) 세부가 뜨고
- * 누르면 초안 편집에서 그 기능을 연다. 사람이 고친 기능은 파란 테두리와 고친 사람, 확인할 것이 남은 기능은 주황 표시.
+ * 누르면 초안 편집에서 그 기능을 연다. 사람이 고친 기능은 파란 테두리와 고친 사람·고친 칸, 확인할 것이 남은 기능은 주황,
+ * 사람이 체크하거나 답한 항목은 초록 표시(무엇을 누가 확인했는지는 세부에).
  */
-function FunctionOverview({ draft, open, onPick }: { draft: Draft; open: Map<string, ReviewItem[]>; onPick: (id: string) => void }) {
+function FunctionOverview({ draft, open, done, onPick }: {
+  draft: Draft
+  open: Map<string, ReviewItem[]>
+  done: Map<string, ReviewItem[]>
+  onPick: (id: string) => void
+}) {
   const groups = useMemo(() => {
     const m = new Map<string, FunctionSpec[]>()
     for (const f of draft.functions) m.set(f.group, [...(m.get(f.group) ?? []), f])
@@ -295,12 +339,14 @@ function FunctionOverview({ draft, open, onPick }: { draft: Draft; open: Map<str
   }, [draft.functions])
   const edited = draft.functions.filter((f) => draft.state.functions[f.function_id]).length
   const flagged = draft.functions.filter((f) => open.has(f.function_id)).length
+  const checked = draft.functions.filter((f) => done.has(f.function_id)).length
   return (
     <div className="border-t border-line px-5 py-4">
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-small text-fg-3">
         <span>기능 {fmt(draft.functions.length)}개</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-info" />사람이 고침 {fmt(edited)}</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-warn" />확인할 것 남음 {fmt(flagged)}</span>
+        <span className="inline-flex items-center gap-1.5"><Check size={12} weight="bold" aria-hidden="true" className="text-ok" />사람이 확인함 {fmt(checked)}</span>
         <span className="ml-auto">마우스를 올리면 세부 · 누르면 편집</span>
       </div>
       <div className="space-y-4">
@@ -308,7 +354,7 @@ function FunctionOverview({ draft, open, onPick }: { draft: Draft; open: Map<str
           <section key={group} aria-label={`${group} 기능`}>
             <h2 className="mb-1.5 font-mono text-small text-fg-3">{group} <span className="tabular-nums">({fns.length})</span></h2>
             <ul className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] gap-1.5">
-              {fns.map((f) => <OverviewTile key={f.function_id} fn={f} draft={draft} items={open.get(f.function_id) ?? []} onPick={onPick} />)}
+              {fns.map((f) => <OverviewTile key={f.function_id} fn={f} draft={draft} items={open.get(f.function_id) ?? []} done={done.get(f.function_id) ?? []} onPick={onPick} />)}
             </ul>
           </section>
         ))}
@@ -317,10 +363,17 @@ function FunctionOverview({ draft, open, onPick }: { draft: Draft; open: Map<str
   )
 }
 
-function OverviewTile({ fn, draft, items, onPick }: { fn: FunctionSpec; draft: Draft; items: ReviewItem[]; onPick: (id: string) => void }) {
+function OverviewTile({ fn, draft, items, done, onPick }: {
+  fn: FunctionSpec
+  draft: Draft
+  items: ReviewItem[]
+  done: ReviewItem[]
+  onPick: (id: string) => void
+}) {
   const tipId = `ov-${fn.function_id}`
   const edited = Boolean(draft.state.functions[fn.function_id])
   const editor = draft.editors[fn.function_id]
+  const editWhat = draft.lastChange[fn.function_id]?.what
   const required = items.filter((i) => i.required).length
   // 오른쪽 끝 칸이면 세부 칸을 왼쪽으로 펼친다 (화면 밖으로 나가지 않게)
   const [flip, setFlip] = useState(false)
@@ -337,6 +390,11 @@ function OverviewTile({ fn, draft, items, onPick }: { fn: FunctionSpec; draft: D
               {items.length}
             </span>
           )}
+          {done.length > 0 && (
+            <span className="inline-flex shrink-0 items-center gap-0.5 rounded-sm bg-ok-soft px-1 text-micro font-semibold text-ok tabular-nums" aria-label={`사람이 확인함 ${done.length}건`}>
+              <Check size={10} weight="bold" aria-hidden="true" />{done.length}
+            </span>
+          )}
         </span>
         <span className="mt-0.5 truncate text-micro text-fg-3">
           <span className="font-mono">{fn.function_id}</span>{edited && <span className="text-info"> · {editor ? `${editor} 수정` : '수정됨'}</span>}
@@ -350,7 +408,25 @@ function OverviewTile({ fn, draft, items, onPick }: { fn: FunctionSpec; draft: D
         <p className="mt-1.5 text-micro text-fg-3">
           행위자 {fn.actors.filter(Boolean).join(', ') || '없음'} · 요구사항 {fn.requirement_ids.length} · 규칙 {fn.business_rules.length} · 처리 순서 {fn.normal_flow.length}단계
         </p>
-        {edited && <p className="mt-1.5 text-micro text-info">사람이 고침{editor ? ` · ${editor}` : ''}</p>}
+        {edited && <p className="mt-1.5 text-micro text-info">사람이 고침{editor ? ` · ${editor}` : ''}{editWhat ? ` — ${editWhat}` : ''}</p>}
+        {done.length > 0 && (
+          <div className="mt-2 border-t border-line pt-2">
+            <p className="text-micro font-medium text-ok">사람이 확인함 {done.length}건</p>
+            <ul className="mt-1 space-y-1">
+              {done.slice(0, 5).map((i) => {
+                const by = checkedBy(draft, i)
+                return (
+                  <li key={i.id} className="text-micro text-fg-2">
+                    <span className="text-fg-3">{KIND_LABEL[i.kind]}</span> · <span className="line-clamp-2 inline">{i.title}</span>
+                    {i.question && draft.state.answers[i.question.question_id] && <span className="text-fg-3"> → 답: {draft.state.answers[i.question.question_id]}</span>}
+                    <span className="text-ok"> · {by}</span>
+                  </li>
+                )
+              })}
+              {done.length > 5 && <li className="text-micro text-fg-3">외 {done.length - 5}건</li>}
+            </ul>
+          </div>
+        )}
         {items.length > 0 ? (
           <div className="mt-2 border-t border-line pt-2">
             <p className="text-micro font-medium text-warn">확인할 것 {items.length}건{required ? ` (필수 ${required})` : ''}</p>

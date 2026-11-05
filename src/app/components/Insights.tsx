@@ -81,7 +81,7 @@ function ChangeLogCard({ log }: { log: DraftLogEntry[] }) {
                 <ul className="mt-1 space-y-0.5 text-fg-2">
                   {e.changes.slice(0, 8).map((c, j) => (
                     <li key={j}>
-                      {c.target && <span className="font-mono text-micro text-fg-3">{c.target} </span>}
+                      {c.target && c.label !== '확인 표시' && <span className="font-mono text-micro text-fg-3">{c.target} </span>}
                       {c.label && !e.event && <span className="text-fg-3">{c.label} · </span>}
                       {c.what}
                     </li>

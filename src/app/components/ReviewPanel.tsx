@@ -129,7 +129,8 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
 }
 
 /** 확인 항목 한 줄 (질문 답·체크·지적 처리). 기능 명세의 기능 펼침 안에서도 그 기능 항목만 보여 줄 때 쓴다 (onJump 없으면 이동 링크 없음) */
-export function ReviewRow({ item, draft, onJump, compact }: { item: ReviewItem; draft: Draft; onJump?: (id: string) => void; compact?: boolean }) {
+/** by: 이 항목을 처리(체크·답)한 사람 — 넘기면 '해결' 옆에 보인다 */
+export function ReviewRow({ item, draft, onJump, compact, by }: { item: ReviewItem; draft: Draft; onJump?: (id: string) => void; compact?: boolean; by?: string }) {
   const detailId = useId()
   const tone = item.kind === 'check' || item.issue?.severity === 'ERROR' ? 'danger' : item.question ? 'info' : 'warn'
 
@@ -140,6 +141,7 @@ export function ReviewRow({ item, draft, onJump, compact }: { item: ReviewItem; 
           <Badge tone={tone}>{KIND_LABEL[item.kind]}{item.issue && ` · ${item.issue.severity === 'ERROR' ? '오류' : item.issue.severity === 'WARNING' ? '경고' : '참고'}`}</Badge>
           {item.required && <Badge tone="neutral">필수</Badge>}
           {item.resolved && <Badge tone="ok" icon={<CheckCircle weight="fill" aria-hidden="true" />}>해결</Badge>}
+          {item.resolved && by && <span className="text-micro text-ok">{by}</span>}
           {item.question?.blocking && <Badge tone="danger">진행 막음</Badge>}
         </div>
         <p className={cx('text-label', item.resolved ? 'text-fg-3' : 'text-fg')}>{item.title}</p>

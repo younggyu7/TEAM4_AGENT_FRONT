@@ -268,6 +268,9 @@ export function useDraft(design: Design, project: string, version: string, canSa
     request,
     /** 기능·테이블 ID → 마지막으로 고친 사람 (변경 내역에서) */
     editors: Object.fromEntries(log.flatMap((e) => e.changes.filter((c) => c.target).map((c) => [c.target, e.by.name]))) as Record<string, string>,
+    /** 대상 ID → 마지막으로 바꾼 사람과 내용 (기능·테이블 수정, 질문 답, 확인 표시 'a:기능:규칙'·'i:지적') */
+    lastChange: Object.fromEntries(log.filter((e) => !e.event).flatMap((e) => e.changes.filter((c) => c.target)
+      .map((c) => [c.target, { by: e.by.name, what: c.what }]))) as Record<string, { by: string; what: string }>,
     /** 파트원: 수정 완료 승인 요청 (지금 초안을 먼저 서버에 쓰고 요청) */
     requestReview: async (note: string) => {
       // 아직 서버에 안 쓴 수정이 있으면 먼저 쓴다 (요청 뒤에 저장되면 '요청 뒤 수정'으로 요청이 취소된다)
