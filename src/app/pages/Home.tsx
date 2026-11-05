@@ -238,7 +238,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label htmlFor={`${inputId}-project`} hint="비우면 파일 이름">프로젝트 이름</Label>
+            <Label htmlFor={`${inputId}-project`} hint="비우면 파일 이름 · 개발한 앱의 로그인 화면·메뉴에도 보임">회사 이름</Label>
             <TextInput id={`${inputId}-project`} value={project} disabled={running} placeholder={file ? file.name.replace(/\.[^.]+$/, '') : '예: 고객요구사항4'}
               onChange={(e) => setProject(e.target.value)} />
           </div>

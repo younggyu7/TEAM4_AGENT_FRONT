@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Copy, GitBranch, Play, Stop } from '@phosphor-icons/react'
+import { ArrowRight, Check, CircleNotch, Copy, GitBranch, Play, Stop } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { apiUrl, appUrl, getGitSettings, getPreviewAccounts, getPreviewStatus, getRepo, previewUrl, stopPreview, type GitSettings, type Job, type PreviewAccount, type PreviewStatus, type RepoBranch } from '../../api'
 import { formatDate } from '../../labels'
@@ -82,10 +82,11 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const state = run ? RUN[run.status] : undefined
   const mockUrl = apiUrl(`/preview/${encodeURIComponent(project)}/mock/`)
   const openUrl = step === '1' ? (developed?.mock ? mockUrl : undefined) : developed ? previewUrl(project) : undefined
-  const steps: { id: Step; label: string; status: string; tone: Tone; done: boolean }[] = [
+  const steps: { id: Step; label: string; status: string; tone: Tone; done: boolean; spin?: 'ok' | 'info' }[] = [
     { id: '1', label: '개발', done: Boolean(developed),
       status: developing ? '개발 중' : developed ? `완료 ${formatDate(developed.at)}` : '개발 대기', tone: developed ? 'ok' : developing ? 'info' : 'warn' },
-    { id: '2', label: '실행 (Docker)', done: run?.status === 'running',
+    // 실행: 끝난 일이 아니라 지금 돌고 있는 상태라 체크 대신 도는 표시 (실행 중 초록, 빌드·켜는 중 파랑)
+    { id: '2', label: '실행 (Docker)', done: false, spin: run?.status === 'running' ? 'ok' : run?.status === 'building' || run?.status === 'starting' ? 'info' : undefined,
       status: !developed ? '1단계 후' : !run ? '확인 중' : !run.backend ? '백엔드 없음' : RUN[run.status].label, tone: state?.tone ?? 'neutral' },
     { id: '3', label: 'Git', done: Boolean(record.git) && remote?.ahead === 0,
       status: !developed ? '1단계 후' : remote?.ahead ? `원격보다 ${remote.ahead}개 앞섬` : record.git ? `올림 ${formatDate(record.git.at)}` : '안 올림',
@@ -118,8 +119,9 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
               className={cx('flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
                 step === s.id ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card')}>
               <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md text-small font-semibold tabular-nums',
-                s.done ? 'bg-ok text-card' : step === s.id ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
-                {s.done ? <Check size={14} weight="bold" /> : s.id}
+                s.spin === 'ok' ? 'bg-ok-soft text-ok' : s.spin === 'info' ? 'bg-info-soft text-info'
+                  : s.done ? 'bg-ok text-card' : step === s.id ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
+                {s.spin ? <CircleNotch size={16} weight="bold" className="animate-spin" /> : s.done ? <Check size={14} weight="bold" /> : s.id}
               </span>
               <span className="min-w-0">
                 <span className={cx('block text-label', step === s.id ? 'font-semibold' : 'font-medium text-fg-2')}>{s.id}단계 · {s.label}</span>

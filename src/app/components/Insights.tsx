@@ -359,9 +359,10 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
         </span>} />
       <div className="px-5 pb-5">
         {!d ? <p className="text-small text-fg-3">아직 개발하지 않았습니다.</p> : (
-          <dl className="grid grid-cols-2 gap-3">
+          <>
+          <dl className="mb-5 grid grid-cols-2 gap-3">
             <div className="min-w-0">
-              <dt className="text-small text-fg-3">방식</dt>
+              <dt className="text-small text-fg-3">방식 (이번 개발)</dt>
               <dd className="mt-1 truncate text-label font-medium">{label}</dd>
               <dd className="text-micro text-fg-3 tabular-nums">{u ? `호출 ${fmt(u.calls)}회` : mode === 'none' ? '호출 0회' : '기록 없음 (예전 개발)'}</dd>
             </div>
@@ -372,6 +373,24 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
                 {u ? `입력 ${compact(u.input)} · 출력 ${compact(u.output)}${cost !== undefined ? ` · ${usd(cost)}` : ''}` : mode === 'none' ? '$0' : ''}</dd>
             </div>
           </dl>
+          {/* 개발한 회차별 입력·출력 (다른 화면의 버전별 막대와 같은 부품). 기록이 없던 예전 회차는 0 */}
+          <TokenBars
+            caption="개발 회차별 토큰 사용량"
+            bars={(record?.developments?.length ? record.developments : [d]).map((x, i, all) => {
+              const xu = x.usage
+              const xmode = xu?.mode ?? (x.build ? 'build' : x.logic ? 'logic' : 'none')
+              return {
+                key: `${x.at}-${i}`,
+                label: `${i + 1}회`,
+                input: xu?.input ?? 0,
+                output: xu?.output ?? 0,
+                calls: xu?.calls ?? 0,
+                current: i === all.length - 1,
+                sub: `${formatDate(x.at)} · ${xmode === 'build' ? '기능 전체 AI' : xmode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'}${xu || xmode === 'none' ? '' : ' · 기록 없음 (예전 개발)'}`,
+              }
+            })}
+          />
+          </>
         )}
       </div>
     </Card>

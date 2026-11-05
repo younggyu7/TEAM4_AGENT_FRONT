@@ -185,6 +185,8 @@ export interface VersionRecord {
     check?: { ok: boolean; message?: string; apis?: number; counts?: { ok: number; not_implemented: number; errors: number; other: number }
       errors?: string[]; not_implemented?: string[]; other?: string[] } | null
   }
+  /** 개발한 회차마다의 develop 기록 (다시 개발할 때마다 쌓인다, 개발 토큰 회차별 막대) */
+  developments?: NonNullable<VersionRecord['develop']>[]
   /** 원격 올리기 기록: 원격 하나의 브랜치·커밋 (예전 기록은 화면·백엔드 쪽마다 pushed·urls) */
   git?: { at: string; by: { id: number; name: string }; url?: string; branch?: string; commit?: string
     pushed?: Record<string, string>; urls?: Record<string, string> }
