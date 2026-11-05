@@ -1,5 +1,5 @@
-   {
-     "rewrites": [
-       { "source": "/api/:path*", "destination": "https://italiano-availability-dos-asp.trycloudflare.com/api/:path*" }
-     ]
-   }
+{
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "http://3.38.231.198:8000/api/:path*" }
+  ]
+}
