@@ -215,10 +215,6 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   const actions = route.page === 'spec' ? (
     <>
       {perm.specEdit && <ResetButton draft={draft} />}
-      {perm.specEdit && (
-        <Button icon={<FloppyDisk />} onClick={() => { const ok = draft.saveNow(); setSavedNote(ok ? `임시저장함 ${formatDate(new Date().toISOString()).slice(-5)}` : '저장 실패') }}
-          title="지금 편집·체크를 서버에 저장해 같은 파트 회원과 함께 봅니다 (내보내기 아님)">임시저장</Button>
-      )}
       {/* 새 답은 내보낼 때 코드로 반영된다. LLM으로 답이 바꾼 기능을 다시 쓰거나 의견으로 기능 명세 새 버전을 만들 때만 (토큰 사용) */}
       {answered > 0 ? (
         <Button icon={<ArrowsClockwise />} disabled={running || !perm.specEdit} onClick={() => setDialog('answers')}

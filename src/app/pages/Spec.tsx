@@ -2,6 +2,7 @@ import { ArrowCounterClockwise, CaretDown, FileText, MagnifyingGlass } from '@ph
 import { useEffect, useMemo, useState } from 'react'
 import type { FunctionSpec } from '../../types'
 import { ExceptionEditor, IOEditor, ListEditor } from '../components/editors'
+import { useDraftSave } from '../components/DraftSave'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, fmt, Label, Segmented, TextArea, TextInput } from '../components/ui'
 import type { Draft } from '../lib/draft'
@@ -29,6 +30,7 @@ export function scrollToId(id: string) {
 
 export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version, blockReason }: EditorProps) {
   const [tab, setTab] = useState<Tab>('draft')
+  const saving = useDraftSave('spec', draft)
   const [query, setQuery] = useState('')
   const [flaggedOnly, setFlaggedOnly] = useState(false)
   const open = useMemo(() => openCountByTarget(items), [items])
@@ -56,13 +58,14 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
         eyebrow={`Draft · v${version}`}
         title="기능 명세서 초안"
         titleId="spec-title"
+        actions={saving.button}
       >
         <p className="mt-1 text-label text-fg-3">
           기능 {fmt(draft.functions.length)}개 · 수정 {fmt(draft.editedFunctions)}개 · 확인 필요 {fmt(s.left)}개
         </p>
       </CardHeader>
 
-      <div className="px-5 pb-3">
+      <div className="flex flex-wrap items-start justify-between gap-2 px-5 pb-3">
         <Segmented<Tab>
           label="보기"
           value={tab}
@@ -72,6 +75,7 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
             { value: 'review', label: '확인 필요', count: s.left },
           ]}
         />
+        {saving.result}
       </div>
 
       {tab === 'review' ? (

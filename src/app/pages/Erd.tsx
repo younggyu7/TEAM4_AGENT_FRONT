@@ -1,8 +1,9 @@
-import { ArrowCounterClockwise, FloppyDisk, MagnifyingGlass, Plus, Trash } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, MagnifyingGlass, Plus, Trash } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { ENTITY_KIND, formatDate, label as labelOf } from '../../labels'
+import { ENTITY_KIND, label as labelOf } from '../../labels'
 import type { Attribute, Entity, FunctionSpec } from '../../types'
 import { ErdDiagram } from '../components/ErdDiagram'
+import { useDraftSave } from '../components/DraftSave'
 import { ReviewPanel } from '../components/ReviewPanel'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, fmt, IconButton, Label, Segmented, TextArea, TextInput } from '../components/ui'
 import type { Draft } from '../lib/draft'
@@ -18,17 +19,7 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
   const [tab, setTab] = useState<Tab>('tables')
   const [query, setQuery] = useState('')
   const [searchIn, setSearchIn] = useState<'title' | 'all'>('title')
-  // '저장하기' (내 작업을 서버에 저장, 새 버전 아님): 지난 저장 뒤 바뀐 테이블·확인 처리를 저장할 때 보여 준다
-  const [savedSnap, setSavedSnap] = useState(() => snapshot(draft.state))
-  const [lastSave, setLastSave] = useState<{ at: string; tables: string[]; checks: number; ok: boolean } | null>(null)
-  const saveMine = () => {
-    const now = snapshot(draft.state)
-    const changed = (a: Record<string, string>, b: Record<string, string>) =>
-      [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => a[k] !== b[k])
-    const ok = draft.saveNow()
-    setLastSave({ at: new Date().toISOString(), tables: changed(savedSnap.entities, now.entities), checks: changed(savedSnap.checks, now.checks).length, ok })
-    if (ok) setSavedSnap(now)
-  }
+  const saving = useDraftSave('erd', draft)
   const entities = draft.entities
   const open = useMemo(() => openCountByTarget(items), [items])
   const s = summarize(items)
@@ -47,8 +38,7 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
   return (
     <Card aria-labelledby="erd-title" className="flex flex-col">
       <CardHeader level={1} eyebrow={`Draft · v${version}`} title="ERD 초안" titleId="erd-title"
-        actions={<Button size="sm" icon={<FloppyDisk />} disabled={draft.readOnly} onClick={saveMine}
-          title="내 작업(테이블 편집·확인 처리)을 서버에 저장합니다. 새 버전을 만들지 않습니다">저장하기</Button>}>
+        actions={saving.button}>
         <p className="mt-1 text-label text-fg-3">
           테이블 {fmt(entities.length)}개 · 관계 {fmt(relationsOf(entities).length)}개 · 수정 {fmt(draft.editedEntities)}개 · 확인 필요 {fmt(s.left)}개
         </p>
@@ -64,21 +54,7 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
             { value: 'review', label: '확인 필요', count: s.left },
           ]}
         />
-        {lastSave && (
-          <div role="status" className="max-w-md text-right text-small">
-            <p className={lastSave.ok ? 'text-ok' : 'text-danger'}>
-              {lastSave.ok ? `저장함 ${formatDate(lastSave.at).slice(-5)}` : '저장하지 못했습니다'}
-              {lastSave.ok && lastSave.tables.length === 0 && lastSave.checks === 0 && ' · 지난 저장 뒤 바뀐 것 없음'}
-            </p>
-            {lastSave.tables.length > 0 && (
-              <p className="mt-0.5 flex flex-wrap justify-end gap-1">
-                <span className="text-fg-3">바뀐 테이블</span>
-                {lastSave.tables.map((t) => <code key={t} className="rounded-sm bg-info-soft px-1 text-micro text-info">{t}</code>)}
-              </p>
-            )}
-            {lastSave.checks > 0 && <p className="mt-0.5 text-fg-3">확인 필요 처리 {lastSave.checks}건</p>}
-          </div>
-        )}
+        {saving.result}
       </div>
 
       {tab === 'review' ? (
@@ -467,8 +443,3 @@ function TableMap({ entities, onPick }: { entities: Entity[]; onPick: (id: strin
 }
 
 
-/** 저장 전후 비교용: 테이블 편집·확인 처리를 키마다 글자로 */
-function snapshot(state: Draft['state']): { entities: Record<string, string>; checks: Record<string, string> } {
-  const json = (o: Record<string, unknown> | undefined): Record<string, string> => Object.fromEntries(Object.entries(o ?? {}).map(([k, v]) => [k, JSON.stringify(v)]))
-  return { entities: json(state.entities as Record<string, unknown>), checks: { ...json(state.checked as Record<string, unknown>), ...json(state.dispositions as Record<string, unknown>) } }
-}
