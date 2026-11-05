@@ -1,9 +1,10 @@
-import { ArrowsClockwise, CaretDown, FolderSimple, House, List, SignOut, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { ArrowsClockwise, CaretDoubleLeft, CaretDoubleRight, CaretDown, FolderSimple, House, List, PushPin, PushPinSlash, SignOut, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Project } from '../../types'
 import type { Load } from '../lib/data'
 import type { Route } from '../lib/route'
 import { initials, type User } from '../lib/session'
+import { readStore, writeStore } from '../lib/storage'
 import { SidebarNotices } from './Notices'
 import { VersionGraph } from './VersionGraph'
 import { cx, fmt, IconButton } from './ui'
@@ -51,15 +52,43 @@ export function Shell({ user, onSignOut, route, navigate, projects, onReloadProj
     />
   )
 
+  // 사이드바 크기·접기·고정 (이 브라우저에 기억). 왼쪽: 끌어서 너비 조절·접기 / 오른쪽: 고정하면 끌어서 너비 조절, 풀면 숨겼다가 오른쪽 끝에 마우스를 대면 나타남
+  const [layout, setLayout] = useState<Layout>(() => ({ ...DEFAULT_LAYOUT, ...(readStore<Partial<Layout>>('layout') ?? {}) }))
+  const [peek, setPeek] = useState(false)
+  // 고정을 풀었을 때: 오른쪽 끝에 잠깐 머물러야 열고(실수로 스치면 안 열림), 패널에서 벗어나도 잠깐 뒤에 닫는다
+  const peekTimer = useRef(0)
+  const peekLater = (open: boolean, ms: number) => { window.clearTimeout(peekTimer.current); peekTimer.current = window.setTimeout(() => setPeek(open), ms) }
+  useEffect(() => () => window.clearTimeout(peekTimer.current), [])
+  const save = (next: Partial<Layout>) => setLayout((l) => { const v = { ...l, ...next }; writeStore('layout', v); return v })
+  const leftW = layout.leftOpen ? layout.left : 44
+  const pinned = layout.rightPinned
+
   return (
-    <div className="min-h-dvh bg-canvas text-fg lg:grid lg:grid-cols-[256px_minmax(0,1fr)]">
+    <div className="min-h-dvh bg-canvas text-fg lg:grid lg:grid-cols-[var(--left-w)_minmax(0,1fr)]"
+      style={{ '--left-w': `${leftW}px`, '--right-w': `${layout.right}px` } as CSSProperties}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2">
         본문으로 건너뛰기
       </a>
 
       {/* 넓은 화면: 고정 사이드바 */}
-      <aside className="hidden border-r border-line lg:sticky lg:top-0 lg:block lg:h-dvh lg:overflow-y-auto">
-        {sidebar(false)}
+      <aside className="relative hidden border-r border-line lg:sticky lg:top-0 lg:block lg:h-dvh">
+        {layout.leftOpen ? (
+          <>
+            <div className="h-full overflow-y-auto">{sidebar(false)}</div>
+            <button type="button" onClick={() => save({ leftOpen: false })} aria-label="왼쪽 메뉴 접기" title="메뉴 접기"
+              className="absolute top-3 right-2 z-10 rounded-md p-1 text-fg-3 hover:bg-sunken hover:text-fg">
+              <CaretDoubleLeft size={14} aria-hidden="true" />
+            </button>
+            <ResizeHandle side="right" label="왼쪽 메뉴 너비" value={layout.left} min={200} max={440} onChange={(left) => save({ left })} />
+          </>
+        ) : (
+          <div className="flex h-full flex-col items-center gap-2 pt-3">
+            <button type="button" onClick={() => save({ leftOpen: true })} aria-label="왼쪽 메뉴 펼치기" title="메뉴 펼치기"
+              className="rounded-md p-1.5 text-fg-3 hover:bg-sunken hover:text-fg">
+              <CaretDoubleRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </aside>
 
       {/* 좁은 화면: 상단 막대 + 서랍 */}
@@ -81,16 +110,69 @@ export function Shell({ user, onSignOut, route, navigate, projects, onReloadProj
 
       <div className="min-w-0 px-4 pt-4 pb-10 sm:px-6 lg:px-6 lg:pt-5">
         {header}
-        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
-          <main id="main" ref={main} tabIndex={-1} className="min-w-0 focus:outline-none">
+        <div className={cx('mt-4 grid gap-4 xl:items-start',
+          Boolean(insights) && (pinned ? 'xl:grid-cols-[minmax(0,1fr)_var(--right-w)]' : 'xl:flex xl:gap-0'))}>
+          <main id="main" ref={main} tabIndex={-1} className="min-w-0 focus:outline-none xl:flex-1">
             {children}
           </main>
-          <aside aria-label="진행 상황" className="min-w-0 space-y-4 xl:sticky xl:top-5 xl:max-h-[calc(100dvh-2.5rem)] xl:overflow-y-auto">
-            {insights}
-          </aside>
+          {insights && (
+            // 고정: 늘 보이는 칸 (왼쪽 선으로 너비 조절) / 고정 풀림: 너비 0에서 천천히 늘어나며 본문을 밀어 나온다
+            <aside aria-label="진행 상황"
+              onMouseEnter={() => { if (!pinned) peekLater(true, 0) }} onMouseLeave={() => { if (!pinned) peekLater(false, 400) }}
+              className={cx('min-w-0',
+                pinned ? 'space-y-4 xl:sticky xl:top-5 xl:max-h-[calc(100dvh-2.5rem)] xl:overflow-y-auto xl:pl-2'
+                  : 'space-y-4 xl:sticky xl:top-5 xl:w-[var(--peek-w)] xl:shrink-0 xl:overflow-hidden xl:transition-[width] xl:duration-500 xl:ease-in-out')}
+              style={pinned ? undefined : { '--peek-w': peek ? `${layout.right + 16}px` : '0px' } as CSSProperties}>
+              <div className={cx('space-y-4', !pinned && 'xl:max-h-[calc(100dvh-2.5rem)] xl:w-[var(--right-w)] xl:overflow-y-auto xl:ml-4')}>
+                <div className="hidden justify-end xl:flex">
+                  <button type="button" onClick={() => { save({ rightPinned: !pinned }); setPeek(false) }}
+                    aria-pressed={pinned} title={pinned ? '고정 풀기: 숨겼다가 오른쪽 끝에 마우스를 잠깐 대면 나타남' : '고정: 늘 보이고 너비를 조절'}
+                    className={cx('inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-micro hover:bg-sunken', pinned ? 'text-fg-2' : 'text-fg-3')}>
+                    {pinned ? <PushPin size={13} weight="fill" aria-hidden="true" /> : <PushPinSlash size={13} aria-hidden="true" />}{pinned ? '고정됨' : '고정'}
+                  </button>
+                </div>
+                {insights}
+              </div>
+              {pinned && <ResizeHandle side="left" label="오른쪽 패널 너비" value={layout.right} min={260} max={560} onChange={(right) => save({ right })} />}
+            </aside>
+          )}
+          {/* 고정을 풀었을 때: 오른쪽 끝에 마우스를 잠깐(0.3초) 대면 패널이 나온다 */}
+          {insights && !pinned && !peek && (
+            // 오른쪽(스크롤 막대·창 밖)으로 벗어나는 것은 취소하지 않는다: 그쪽은 화면이 마우스를 못 보지만 '끝으로 민' 것이다.
+            // 왼쪽(본문 쪽)으로 돌아올 때만 취소한다
+            <div aria-hidden="true" onMouseEnter={() => peekLater(true, 300)}
+              onMouseLeave={(e) => { if (e.clientX < e.currentTarget.getBoundingClientRect().left) window.clearTimeout(peekTimer.current) }}
+              className="fixed top-0 right-0 z-30 hidden h-dvh w-6 xl:block" />
+          )}
         </div>
       </div>
     </div>
+  )
+}
+
+type Layout = { left: number; leftOpen: boolean; right: number; rightPinned: boolean }
+const DEFAULT_LAYOUT: Layout = { left: 256, leftOpen: true, right: 340, rightPinned: true }
+
+/** 사이드바 경계선: 마우스로 끌어 너비를 바꾼다 (키보드: ←·→). side = 사이드바의 어느 쪽 가장자리인지 */
+function ResizeHandle({ side, label, value, min, max, onChange }: {
+  side: 'left' | 'right'; label: string; value: number; min: number; max: number; onChange: (v: number) => void
+}) {
+  const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v)))
+  const start = (e: React.PointerEvent) => {
+    e.preventDefault()
+    const x0 = e.clientX, w0 = value
+    const move = (ev: PointerEvent) => onChange(clamp(w0 + (side === 'right' ? ev.clientX - x0 : x0 - ev.clientX)))
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); document.body.style.cursor = '' }
+    document.body.style.cursor = 'col-resize'
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  return (
+    <div role="separator" aria-orientation="vertical" aria-label={label} aria-valuenow={value} aria-valuemin={min} aria-valuemax={max} tabIndex={0}
+      onPointerDown={start}
+      onKeyDown={(e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') onChange(clamp(value + ((e.key === 'ArrowRight') === (side === 'right') ? 16 : -16))) }}
+      className={cx('absolute top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary/30 focus-visible:bg-primary/40 focus-visible:outline-none',
+        side === 'right' ? '-right-[3px]' : 'left-0')} />
   )
 }
 

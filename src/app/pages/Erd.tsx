@@ -1,6 +1,6 @@
-import { ArrowCounterClockwise, MagnifyingGlass, Plus, Trash } from '@phosphor-icons/react'
+import { ArrowCounterClockwise, FloppyDisk, MagnifyingGlass, Plus, Trash } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
-import { ENTITY_KIND, label as labelOf } from '../../labels'
+import { ENTITY_KIND, formatDate, label as labelOf } from '../../labels'
 import type { Attribute, Entity, FunctionSpec } from '../../types'
 import { ErdDiagram } from '../components/ErdDiagram'
 import { ReviewPanel } from '../components/ReviewPanel'
@@ -17,6 +17,18 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
 }) {
   const [tab, setTab] = useState<Tab>('tables')
   const [query, setQuery] = useState('')
+  const [searchIn, setSearchIn] = useState<'title' | 'all'>('title')
+  // '저장하기' (내 작업을 서버에 저장, 새 버전 아님): 지난 저장 뒤 바뀐 테이블·확인 처리를 저장할 때 보여 준다
+  const [savedSnap, setSavedSnap] = useState(() => snapshot(draft.state))
+  const [lastSave, setLastSave] = useState<{ at: string; tables: string[]; checks: number; ok: boolean } | null>(null)
+  const saveMine = () => {
+    const now = snapshot(draft.state)
+    const changed = (a: Record<string, string>, b: Record<string, string>) =>
+      [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => a[k] !== b[k])
+    const ok = draft.saveNow()
+    setLastSave({ at: new Date().toISOString(), tables: changed(savedSnap.entities, now.entities), checks: changed(savedSnap.checks, now.checks).length, ok })
+    if (ok) setSavedSnap(now)
+  }
   const entities = draft.entities
   const open = useMemo(() => openCountByTarget(items), [items])
   const s = summarize(items)
@@ -27,16 +39,21 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
   }, [focus])
 
   const q = query.trim().toLowerCase()
-  const shown = entities.filter((e) => !q || [e.entity_id, e.label, e.description].some((t) => t.toLowerCase().includes(q)))
+  // 검색: 제목(테이블 ID·이름)만 / 제목 + 내용(설명·컬럼 이름·설명까지)
+  const shown = entities.filter((e) => !q || (searchIn === 'title' ? [e.entity_id, e.label]
+    : [e.entity_id, e.label, e.description, ...e.attributes.flatMap((a) => [a.name, a.label ?? '', a.description ?? ''])])
+    .some((t) => (t ?? '').toLowerCase().includes(q)))
 
   return (
     <Card aria-labelledby="erd-title" className="flex flex-col">
-      <CardHeader level={1} eyebrow={`Draft · v${version}`} title="ERD 초안" titleId="erd-title">
+      <CardHeader level={1} eyebrow={`Draft · v${version}`} title="ERD 초안" titleId="erd-title"
+        actions={<Button size="sm" icon={<FloppyDisk />} disabled={draft.readOnly} onClick={saveMine}
+          title="내 작업(테이블 편집·확인 처리)을 서버에 저장합니다. 새 버전을 만들지 않습니다">저장하기</Button>}>
         <p className="mt-1 text-label text-fg-3">
           테이블 {fmt(entities.length)}개 · 관계 {fmt(relationsOf(entities).length)}개 · 수정 {fmt(draft.editedEntities)}개 · 확인 필요 {fmt(s.left)}개
         </p>
       </CardHeader>
-      <div className="px-5 pb-3">
+      <div className="flex flex-wrap items-start justify-between gap-2 px-5 pb-3">
         <Segmented<Tab>
           label="보기"
           value={tab}
@@ -47,6 +64,21 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
             { value: 'review', label: '확인 필요', count: s.left },
           ]}
         />
+        {lastSave && (
+          <div role="status" className="max-w-md text-right text-small">
+            <p className={lastSave.ok ? 'text-ok' : 'text-danger'}>
+              {lastSave.ok ? `저장함 ${formatDate(lastSave.at).slice(-5)}` : '저장하지 못했습니다'}
+              {lastSave.ok && lastSave.tables.length === 0 && lastSave.checks === 0 && ' · 지난 저장 뒤 바뀐 것 없음'}
+            </p>
+            {lastSave.tables.length > 0 && (
+              <p className="mt-0.5 flex flex-wrap justify-end gap-1">
+                <span className="text-fg-3">바뀐 테이블</span>
+                {lastSave.tables.map((t) => <code key={t} className="rounded-sm bg-info-soft px-1 text-micro text-info">{t}</code>)}
+              </p>
+            )}
+            {lastSave.checks > 0 && <p className="mt-0.5 text-fg-3">확인 필요 처리 {lastSave.checks}건</p>}
+          </div>
+        )}
       </div>
 
       {tab === 'review' ? (
@@ -75,6 +107,8 @@ export function ErdEditor({ draft, items, focus, onFocus, finalizedAt, version, 
               <MagnifyingGlass size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-fg-3" aria-hidden="true" />
               <TextInput dense type="search" aria-label="테이블 검색" placeholder="테이블 검색" value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9" />
             </div>
+            <Segmented<'title' | 'all'> label="검색 범위" value={searchIn} onChange={setSearchIn} className="mt-1.5"
+              options={[{ value: 'title', label: '제목' }, { value: 'all', label: '제목 + 내용' }]} />
             <ul className="mt-2 max-h-64 space-y-0.5 overflow-y-auto md:max-h-[640px]">
               {shown.map((e) => {
                 const active = e.entity_id === selected?.entity_id
@@ -430,4 +464,11 @@ function TableMap({ entities, onPick }: { entities: Entity[]; onPick: (id: strin
       })}
     </div>
   )
+}
+
+
+/** 저장 전후 비교용: 테이블 편집·확인 처리를 키마다 글자로 */
+function snapshot(state: Draft['state']): { entities: Record<string, string>; checks: Record<string, string> } {
+  const json = (o: Record<string, unknown> | undefined): Record<string, string> => Object.fromEntries(Object.entries(o ?? {}).map(([k, v]) => [k, JSON.stringify(v)]))
+  return { entities: json(state.entities as Record<string, unknown>), checks: { ...json(state.checked as Record<string, unknown>), ...json(state.dispositions as Record<string, unknown>) } }
 }

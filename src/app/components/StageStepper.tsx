@@ -9,13 +9,15 @@ const STEPS: { id: StagePage; label: string; hint: string }[] = [
   { id: 'final', label: '최종 산출물', hint: 'ERD 관계도·DDL·보고서' },
 ]
 
-/** 단계의 버전 표시. 아직 그 단계 버전이 없으면 앞 단계 번호를 그대로 쓰고 있다는 뜻으로 '(… 안의 초안)'처럼 적는다 */
-function versionLabel(stage: StagePage, t: Record<StagePage, string>): string {
+/** 단계의 버전 표시. 아직 그 단계 버전이 없으면 앞 단계 번호를 그대로 쓰고 있다는 뜻으로 '(… 안의 초안)'처럼 적는다.
+ * 최종 산출물은 확정 전에는 번호만 적고(아래 줄 '최종 확정 전'으로 충분, 칸 높이를 맞춘다) 확정한 뒤에만 '미리 보기'를 붙인다 */
+function versionLabel(stage: StagePage, t: Record<StagePage, string>, finalDone: boolean): string {
   const depthOf = (v: string) => v.split('.').length - 1
   const want = stage === 'spec' ? 0 : stage === 'erd' ? 1 : 2
   const v = t[stage]
   if (depthOf(v) === want) return `v${v}`
-  return stage === 'erd' ? `v${v} 안의 초안` : `v${v} 미리 보기`
+  if (stage === 'erd') return `v${v} 안의 초안`
+  return finalDone ? `v${v} 미리 보기` : `v${v}`
 }
 
 /** 이 버전의 진행 단계. 앞 단계를 확정해야 다음 단계가 '진행 가능'으로 바뀌지만, 보기는 언제든 할 수 있다.
@@ -68,8 +70,8 @@ export function StageStepper({ page, version, targets, finalized, decision, onGo
                   {isDone ? <Check size={14} weight="bold" /> : i + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className={cx('block text-label', current ? 'font-semibold' : 'font-medium text-fg-2')}>
-                    {s.label} <span className="font-normal text-fg-3 tabular-nums">{versionLabel(s.id, targets)}</span>
+                  <span className={cx('block truncate text-label', current ? 'font-semibold' : 'font-medium text-fg-2')}>
+                    {s.label} <span className="font-normal text-fg-3 tabular-nums">{versionLabel(s.id, targets, done('final'))}</span>
                   </span>
                   <span className={cx('block truncate text-micro', isDone ? 'text-ok' : 'text-fg-3')}>{status}</span>
                 </span>
