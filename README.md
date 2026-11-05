@@ -100,6 +100,7 @@ ID(요구사항·기능·테이블·이슈)를 누르면 해당 탭의 그 항�
 | `POST /drafts/request` · `POST /drafts/request/reject` | 기능 명세·ERD '수정 완료 승인 요청' · 승인 요청 배너의 '반려' (사유 필수) |
 | `GET /users` · `POST /users/update` · `POST /users/create` | 관리자 페이지 회원 목록·역할·Slack 멤버 ID · 계정 만들기(Slack 멤버 ID 선택) |
 | `GET /members` · `POST /runs`(`members`) | 홈 '새 문서 분석'의 담당자 고르기(Slack 켜짐 여부) · 담당자 정하기·프로젝트 Slack 채널 만들기 |
+| `POST /projects/name` | 왼쪽 프로젝트 목록에서 이름에 마우스를 올리면 나오는 연필 → 프로젝트 이름 바꾸기 (팀장만, 보이는 이름만 바뀌고 주소는 그대로) |
 | `GET·POST /projects/members` | 프로젝트 화면 오른쪽 '담당자' 카드(담당자·Slack 채널) · '바꾸기' (팀장만) |
 
 오류 응답은 `{ "detail": "..." }`이다. 화면이 쓰는 타입은 [src/types.ts](src/types.ts)이고, 원본 계약은 백엔드 `app/schemas/`(기능별: requirement·function·data_model·review·version)다. 스키마가 바뀌면 같이 맞춘다.

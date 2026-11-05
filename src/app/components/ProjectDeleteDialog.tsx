@@ -61,7 +61,7 @@ export function ProjectDeleteDialog({ project, onClose, onDeleted }: {
         </div>
         <div>
           <label htmlFor={inputId} className="mb-1 block text-small text-fg-2">
-            확인하려면 프로젝트 이름 <strong className="font-mono text-fg">{project?.id}</strong> 을(를) 그대로 적어 주세요.
+            확인하려면 프로젝트 이름 <strong className="font-mono text-fg">{project?.id}</strong>{project && project.name !== project.id.split('/').pop() ? ' (처음 올린 이름)' : ''} 을(를) 그대로 적어 주세요.
           </label>
           <TextInput id={inputId} value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} disabled={sending} />
         </div>

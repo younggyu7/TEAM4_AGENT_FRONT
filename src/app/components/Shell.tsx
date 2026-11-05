@@ -1,5 +1,6 @@
-import { ArrowsClockwise, CaretDoubleLeft, CaretDoubleRight, CaretDown, FolderSimple, House, List, PushPin, PushPinSlash, SignOut, Trash, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
+import { ArrowsClockwise, CaretDoubleLeft, CaretDoubleRight, CaretDown, Check, FolderSimple, House, List, PencilSimple, PushPin, PushPinSlash, SignOut, Trash, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { renameProject } from '../../api'
 import type { Project } from '../../types'
 import type { Load } from '../lib/data'
 import type { Route } from '../lib/route'
@@ -8,7 +9,7 @@ import { readStore, writeStore } from '../lib/storage'
 import { SidebarNotices } from './Notices'
 import { ProjectDeleteDialog } from './ProjectDeleteDialog'
 import { VersionGraph } from './VersionGraph'
-import { cx, fmt, IconButton } from './ui'
+import { cx, fmt, IconButton, TextInput } from './ui'
 
 /** 모든 화면이 같이 쓰는 값 (App이 만든다) */
 export interface ShellBase {
@@ -245,6 +246,26 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
       window.removeEventListener('keydown', onKey)
     }
   }, [menu])
+  // 프로젝트 이름 옆 연필 (팀장만, 설계 버전 제목처럼): 화면·Slack에 보이는 이름만 바꾸고 프로젝트 ID·주소는 그대로
+  const canRename = can(user, 'project_rename')
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [draftName, setDraftName] = useState('')
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [renameError, setRenameError] = useState('')
+  const startRename = (p: Project) => { setRenaming(p.id); setDraftName(p.name); setRenameError('') }
+  const saveName = async (id: string) => {
+    setRenameBusy(true)
+    setRenameError('')
+    try {
+      await renameProject(id, draftName)
+      setRenaming(null)
+      onReloadProjects()
+    } catch (e) {
+      setRenameError((e as Error).message)
+    } finally {
+      setRenameBusy(false)
+    }
+  }
   const onDeleted = (id: string) => {
     setDeleting(null)
     if (current?.project === id) navigate({ name: 'home' })
@@ -314,29 +335,45 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
             const latest = p.versions[0]
             return (
               <li key={p.id}>
-                <button
-                  type="button"
-                  aria-current={active ? 'true' : undefined}
-                  onClick={() => navigate({ name: 'workspace', project: p.id, version: latest.design_version, page: current?.page ?? 'spec' })}
-                  onContextMenu={(e) => { e.preventDefault(); setMenu({ project: p, x: e.clientX, y: e.clientY }) }}
-                  className={cx(
-                    'flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors duration-150',
-                    active ? 'bg-card ring-1 ring-line' : 'hover:bg-card',
-                  )}
-                >
-                  <FolderSimple size={16} className="shrink-0 text-fg-3" aria-hidden="true" />
-                  <span className="min-w-0 flex-1">
-                    <span className={cx('block truncate text-label', active ? 'font-semibold' : 'text-fg-2')}>{p.name}</span>
-                    <span className="block text-micro text-fg-3 tabular-nums">
-                      v{latest.design_version} · 버전 {p.versions.length}개
-                      {p.versions.some((v) => v.stage === 'final' && v.approval?.decision === 'approve') && <span className="ml-1 font-medium text-ok">· 승인</span>}
-                    </span>
-                  </span>
-                </button>
+                {renaming === p.id ? (
+                  <form className="flex min-h-10 items-center gap-1 rounded-md bg-card px-1.5 py-1 ring-1 ring-line"
+                    onSubmit={(e) => { e.preventDefault(); void saveName(p.id) }}>
+                    <TextInput dense autoFocus aria-label={`${p.name} 프로젝트 이름`} value={draftName} maxLength={80} disabled={renameBusy}
+                      placeholder={p.id.split('/').pop()}
+                      onChange={(e) => setDraftName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Escape') setRenaming(null) }} />
+                    <IconButton type="submit" label="이름 저장" icon={<Check />} disabled={renameBusy} className="size-7" />
+                    <IconButton label="취소" icon={<X />} onClick={() => setRenaming(null)} disabled={renameBusy} className="size-7" />
+                  </form>
+                ) : (
+                  <div className={cx('group flex items-center rounded-md transition-colors duration-150', active ? 'bg-card ring-1 ring-line' : 'hover:bg-card')}>
+                    <button
+                      type="button"
+                      aria-current={active ? 'true' : undefined}
+                      onClick={() => navigate({ name: 'workspace', project: p.id, version: latest.design_version, page: current?.page ?? 'spec' })}
+                      onContextMenu={(e) => { e.preventDefault(); setMenu({ project: p, x: e.clientX, y: e.clientY }) }}
+                      className="flex min-h-10 min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left"
+                    >
+                      <FolderSimple size={16} className="shrink-0 text-fg-3" aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className={cx('block truncate text-label', active ? 'font-semibold' : 'text-fg-2')}>{p.name}</span>
+                        <span className="block text-micro text-fg-3 tabular-nums">
+                          v{latest.design_version} · 버전 {p.versions.length}개
+                          {p.versions.some((v) => v.stage === 'final' && v.approval?.decision === 'approve') && <span className="ml-1 font-medium text-ok">· 승인</span>}
+                        </span>
+                      </span>
+                    </button>
+                    {canRename && (
+                      <IconButton label={`${p.name} 이름 바꾸기`} icon={<PencilSimple />}
+                        className="mr-1 size-7 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                        onClick={() => startRename(p)} />
+                    )}
+                  </div>
+                )}
               </li>
             )
           })}
         </ul>
+        {renameError && <p role="alert" className="px-2.5 pt-1 text-small text-danger">이름을 바꾸지 못했습니다: {renameError}</p>}
         {hidden > 0 && (
           <button
             type="button"

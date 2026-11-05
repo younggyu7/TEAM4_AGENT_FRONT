@@ -32,7 +32,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /* ------------------------------------------------------------ 회원·권한 */
 /** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
-export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'preview_stop' | 'repo_write' | 'app_accounts' | 'project_delete'
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'preview_stop' | 'repo_write' | 'app_accounts' | 'project_delete' | 'project_rename'
 
 export interface Member {
   id: number
@@ -508,6 +508,11 @@ const post = (path: string, body: unknown) =>
 
 export async function setVersionTitle(project: string, version: string, title: string): Promise<void> {
   await post('/projects/title', { project, version, title })
+}
+
+/** 팀장: 프로젝트 이름 바꾸기 (화면·Slack에 보이는 이름만, 프로젝트 ID·주소는 그대로). 비우면 처음 이름. 바뀐 이름을 돌려준다 */
+export async function renameProject(project: string, name: string): Promise<string> {
+  return ((await (await post('/projects/name', { project, name })).json()) as { name: string }).name
 }
 
 /** 개발 스펙의 기술 스택 선택지 (추천 순서) */
