@@ -145,7 +145,9 @@ export function useDraft(design: Design, project: string, version: string, canSa
 
   // 입력할 때마다 큰 객체를 쓰지 않도록 잠깐 모아서 이 브라우저에, 조금 더 모아서 서버에 저장한다
   useEffect(() => {
-    if (state === loaded.current.state) return
+    // 서버 초안을 막 읽어 바꾼 것이면 저장할 것이 없다. 앞서 걸어 둔 저장 타이머가 취소됐을 수 있으니 '저장됨'으로 돌린다
+    // (그대로 두면 저장이 끝났는데도 '저장 중…'이 남는다)
+    if (state === loaded.current.state) { setSave('saved'); return }
     setSave('saving')
     const t = window.setTimeout(() => {
       const ok = writeStore(key, state)

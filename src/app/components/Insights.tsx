@@ -214,7 +214,7 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
           const curCost = cur ? costOf(cur) : undefined
           return (
             <>
-              <dl className="mb-5 grid grid-cols-2 gap-3">
+              <dl className="mb-2 grid grid-cols-3 gap-3">
                 <div>
                   <dt className="text-small text-fg-3">이 버전 (v{version})</dt>
                   <dd className="mt-1 text-title font-medium tabular-nums">{cur ? compact(cur.input + cur.output) : '—'}</dd>
@@ -348,7 +348,16 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
   const label = mode === 'build' ? '기능 전체 AI' : mode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'
   const model = u?.model || d?.ai?.model || ''
   const effort = u?.effort || d?.ai?.effort || ''
-  const cost = u && model ? costOf({ model, input: u.input, output: u.output } as Usage) : undefined
+  // 금액: 회차마다 그 회차 모델 단가로 (모델 기록이 없거나 단가를 모르면 빼고 '단가 미등록')
+  const costOfRun = (x: NonNullable<VersionRecord['develop']>) => {
+    const m = x.usage?.model || x.ai?.model || ''
+    return x.usage && m ? costOf({ model: m, input: x.usage.input, output: x.usage.output } as Usage) : x.usage?.mode === 'none' ? 0 : undefined
+  }
+  const runs = d ? (record?.developments?.length ? record.developments : [d]) : []
+  const cost = d ? costOfRun(d) : undefined
+  const runCosts = runs.map(costOfRun)
+  const total = runCosts.reduce<number>((a, c) => a + (c ?? 0), 0)
+  const unpriced = runCosts.filter((c, i) => c === undefined && runs[i].usage).length
   return (
     <Card aria-labelledby="dev-tokens-title">
       <CardHeader eyebrow="Tokens" titleId="dev-tokens-title"
@@ -370,9 +379,18 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
               <dt className="text-small text-fg-3">토큰</dt>
               <dd className="mt-1 text-title font-medium tabular-nums">{u ? compact(u.input + u.output) : mode === 'none' ? '0' : '—'}</dd>
               <dd className="truncate text-micro text-fg-3 tabular-nums">
-                {u ? `입력 ${compact(u.input)} · 출력 ${compact(u.output)}${cost !== undefined ? ` · ${usd(cost)}` : ''}` : mode === 'none' ? '$0' : ''}</dd>
+                {u ? `입력 ${compact(u.input)} · 출력 ${compact(u.output)}` : ''}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-small text-fg-3">비용</dt>
+              <dd className="mt-1 text-title font-medium tabular-nums">
+                {mode === 'none' ? '$0' : cost !== undefined ? usd(cost) : '—'}</dd>
+              <dd className="truncate text-micro text-fg-3">{mode === 'none' || cost !== undefined ? 'USD 정가' : u ? '단가 미등록 모델' : '기록 없음'}</dd>
             </div>
           </dl>
+          <p className="mb-4 text-small text-fg-3 tabular-nums" title="회차마다 그 회차 모델의 입력·출력 단가로 계산 (USD, 정가)">
+            개발 {runs.length}회 합계 <span className="font-medium text-fg-2">≈ {usd(total)}</span>{unpriced > 0 ? ` · ${unpriced}회는 단가 없어 제외` : ''}
+          </p>
           {/* 개발한 회차별 입력·출력 (다른 화면의 버전별 막대와 같은 부품). 기록이 없던 예전 회차는 0 */}
           <TokenBars
             caption="개발 회차별 토큰 사용량"
@@ -386,7 +404,7 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
                 output: xu?.output ?? 0,
                 calls: xu?.calls ?? 0,
                 current: i === all.length - 1,
-                sub: `${formatDate(x.at)} · ${xmode === 'build' ? '기능 전체 AI' : xmode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'}${xu || xmode === 'none' ? '' : ' · 기록 없음 (예전 개발)'}`,
+                sub: `${formatDate(x.at)} · ${xmode === 'build' ? '기능 전체 AI' : xmode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'}${xu || xmode === 'none' ? '' : ' · 기록 없음 (예전 개발)'}${runCosts[i] !== undefined ? ` · ${usd(runCosts[i]!)}` : ''}`,
               }
             })}
           />

@@ -17,7 +17,14 @@ export function Home({ shell }: { shell: ShellBase }) {
   const { user, projects, navigate, onReloadProjects: onReload } = shell
   const list = projects.state === 'ready' ? projects.data : []
   const drafts = useMemo(() => draftSummaries(), [])
-  const latest = list[0]
+  // 검토할 초안: 팀장이 최종 승인한 프로젝트는 빼고, 승인 뒤에 새 버전(다시 고친 기능 명세·ERD 등)이 생겼으면 다시 센다
+  const pending = list.filter((p) => {
+    const approvedAt = p.versions.filter((v) => v.stage === 'final' && v.approval?.decision === 'approve')
+      .map((v) => v.approval!.at).sort().at(-1)
+    const lastMade = p.versions.map((v) => v.created_at ?? '').sort().at(-1) ?? ''
+    return !approvedAt || lastMade > approvedAt
+  })
+  const latest = pending[0]
 
   const status = (p: Project): { tone: Tone; label: string } => {
     const d = drafts.find((x) => x.project === p.id && x.version === p.versions[0].design_version)
@@ -39,7 +46,7 @@ export function Home({ shell }: { shell: ShellBase }) {
   return (
     <Shell
       {...shell}
-      header={<PageHeader trail={[user.name, '홈']} meta={latest?.versions[0].created_at && <>최근 생성 {formatDate(latest.versions[0].created_at)}</>} />}
+      header={<PageHeader trail={[user.name, '홈']} meta={list[0]?.versions[0].created_at && <>최근 생성 {formatDate(list[0].versions[0].created_at)}</>} />}
       insights={projects.state === 'ready' ? <HomeInsights projects={list} /> : <Card><Loading label="요약을 불러오는 중" lines={6} /></Card>}
     >
         <div className="space-y-4">
@@ -48,10 +55,12 @@ export function Home({ shell }: { shell: ShellBase }) {
             <SchemaArt className="pointer-events-none absolute -right-8 -bottom-10 hidden w-[360px] text-on-hero opacity-30 md:block" />
             <p className="eyebrow !text-hero-muted">Welcome back</p>
             <h1 className="relative mt-3 max-w-lg text-title font-normal text-balance sm:text-headline">
-              {user.name}님, 검토할 초안이 {list.length}건 있습니다.
+              {pending.length ? `${user.name}님, 검토할 초안이 ${pending.length}건 있습니다.` : `${user.name}님, 검토할 초안이 없습니다.`}
             </h1>
             <p className="relative mt-3 max-w-md text-label text-hero-muted">
-              기능 명세서와 ERD 초안을 고치고, 애매한 항목을 결정해 최종 확정하세요.
+              {pending.length ? '기능 명세서와 ERD 초안을 고치고, 애매한 항목을 결정해 최종 확정하세요.'
+                : list.length ? `프로젝트 ${list.length}개 모두 팀장이 최종 승인했습니다. 새 문서를 올리거나 최종 개발물을 확인하세요.` : '새 문서를 올려 시작하세요.'}
+              {pending.length > 0 && list.length > pending.length && ` (최종 승인된 ${list.length - pending.length}개는 뺌)`}
             </p>
             {latest && (
               <div className="relative mt-6 flex flex-wrap gap-2">

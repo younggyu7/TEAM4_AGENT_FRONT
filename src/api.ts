@@ -32,7 +32,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /* ------------------------------------------------------------ 회원·권한 */
 /** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
-export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'repo_write' | 'app_accounts'
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'repo_write' | 'app_accounts' | 'project_delete'
 
 export interface Member {
   id: number
@@ -448,6 +448,11 @@ const query = (params: Record<string, string | number>) =>
 
 export async function listProjects(): Promise<{ output_dir: string; projects: Project[] }> {
   return (await request('/projects')).json()
+}
+
+/** 프로젝트 삭제 (팀장만, 되돌릴 수 없음): confirm에 프로젝트 이름을 그대로 넣어야 한다 */
+export async function deleteProject(project: string, confirm: string): Promise<{ project: string; removed: string[] }> {
+  return (await request(`/projects?${query({ project, confirm })}`, { method: 'DELETE' })).json()
 }
 
 export async function getDesign(project: string, version: Version): Promise<Design> {

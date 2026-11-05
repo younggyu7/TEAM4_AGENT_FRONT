@@ -21,6 +21,7 @@ export const NEEDS: Record<Permission, string> = {
   develop: '최종 개발하기·실행 끄기·합치기·원격 올리기는 개발 파트장만 할 수 있습니다',
   repo_write: '브랜치·코드 고치기·저장하기·합치기 요청은 개발 파트원·개발 파트장만 할 수 있습니다',
   app_accounts: '앱 시연 계정은 개발 파트원·개발 파트장·팀장만 볼 수 있습니다',
+  project_delete: '프로젝트 삭제는 팀장만 할 수 있습니다',
 }
 
 export function useSession() {

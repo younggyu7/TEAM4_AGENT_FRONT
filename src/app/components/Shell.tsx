@@ -1,11 +1,12 @@
-import { ArrowsClockwise, CaretDoubleLeft, CaretDoubleRight, CaretDown, FolderSimple, House, List, PushPin, PushPinSlash, SignOut, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
+import { ArrowsClockwise, CaretDoubleLeft, CaretDoubleRight, CaretDown, FolderSimple, House, List, PushPin, PushPinSlash, SignOut, Trash, TreeStructure, UsersThree, X } from '@phosphor-icons/react'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Project } from '../../types'
 import type { Load } from '../lib/data'
 import type { Route } from '../lib/route'
-import { initials, type User } from '../lib/session'
+import { can, initials, NEEDS, type User } from '../lib/session'
 import { readStore, writeStore } from '../lib/storage'
 import { SidebarNotices } from './Notices'
+import { ProjectDeleteDialog } from './ProjectDeleteDialog'
 import { VersionGraph } from './VersionGraph'
 import { cx, fmt, IconButton } from './ui'
 
@@ -225,6 +226,31 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
   // 서버의 버전 기록으로 센다 (어느 PC에서 보든 같다): 팀장이 최종본을 승인한 프로젝트 / 아직인 프로젝트
   const approved = list.filter((p) => p.versions.some((v) => v.stage === 'final' && v.approval?.decision === 'approve')).length
 
+  // 프로젝트 이름 오른쪽 클릭 → 작은 메뉴 ('프로젝트 삭제', 팀장만) → 이름을 적는 확인 창
+  const [menu, setMenu] = useState<{ project: Project; x: number; y: number } | null>(null)
+  const [deleting, setDeleting] = useState<Project | null>(null)
+  const canDelete = can(user, 'project_delete')
+  useEffect(() => {
+    if (!menu) return
+    const close = () => setMenu(null)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [menu])
+  const onDeleted = (id: string) => {
+    setDeleting(null)
+    if (current?.project === id) navigate({ name: 'home' })
+    onReloadProjects()
+  }
+
   return (
     <div className="flex min-h-full flex-col gap-5 px-3 py-4">
       <div className="flex items-center justify-between gap-2 px-1">
@@ -292,6 +318,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
                   type="button"
                   aria-current={active ? 'true' : undefined}
                   onClick={() => navigate({ name: 'workspace', project: p.id, version: latest.design_version, page: current?.page ?? 'spec' })}
+                  onContextMenu={(e) => { e.preventDefault(); setMenu({ project: p, x: e.clientX, y: e.clientY }) }}
                   className={cx(
                     'flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors duration-150',
                     active ? 'bg-card ring-1 ring-line' : 'hover:bg-card',
@@ -323,6 +350,19 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
         )}
       </section>
 
+      {menu && (
+        <div role="menu" aria-label={`${menu.project.name} 메뉴`} onPointerDown={(e) => e.stopPropagation()}
+          style={{ left: Math.min(menu.x, window.innerWidth - 200), top: Math.min(menu.y, window.innerHeight - 60) }}
+          className="fixed z-50 w-48 rounded-md border border-line bg-card p-1 shadow-lg">
+          <button type="button" role="menuitem" autoFocus disabled={!canDelete} title={canDelete ? undefined : NEEDS.project_delete}
+            onClick={() => { setDeleting(menu.project); setMenu(null) }}
+            className="flex min-h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-small text-danger transition-colors duration-150 hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent">
+            <Trash size={14} aria-hidden="true" /> 프로젝트 삭제
+          </button>
+          {!canDelete && <p className="px-2.5 pb-1 text-micro text-fg-3">팀장만 지울 수 있습니다</p>}
+        </div>
+      )}
+      <ProjectDeleteDialog project={deleting} onClose={() => setDeleting(null)} onDeleted={onDeleted} />
     </div>
   )
 }

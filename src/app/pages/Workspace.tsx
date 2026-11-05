@@ -273,7 +273,9 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
             ? <button type="button" onClick={() => myJob.source === 'review' ? openJobVersion(myJob.new_version ?? myJob.base) : open(myJob.source === 'answers' ? 'spec' : 'erd')} className="flex items-center gap-1.5 text-info underline-offset-4 hover:underline">
                 <CircleNotch size={14} className="animate-spin" aria-hidden="true" />{myJob.message}
               </button>
-            : <SaveIndicator status={draft.save} edited={edited} note={savedNote} sync={draft.sync} onReload={draft.reloadServer} />}
+            : route.page === 'spec' || route.page === 'erd'   // 저장 상태는 고치는 단계에만 (최종 산출물·산출물 보기·최종 개발물은 고치는 곳이 아님)
+              ? <SaveIndicator status={draft.save} edited={edited} note={savedNote} sync={draft.sync} onReload={draft.reloadServer} />
+              : undefined}
           actions={actions}
         />
       }
