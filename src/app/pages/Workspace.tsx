@@ -63,7 +63,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     specEdit: can(me, 'spec_edit'), specConfirm: can(me, 'spec_confirm'),
     erdEdit: can(me, 'erd_edit'), erdConfirm: can(me, 'erd_confirm'), final: can(me, 'final_decide'),
   }
-  // PM 수정 지시의 진행(서버가 계산). 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다 (알림은 왼쪽 사이드바)
+  // 수정 지시의 진행(서버가 계산). 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다 (알림은 왼쪽 사이드바)
   const allVersions = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project)?.versions ?? [] : []
   const [directives, setDirectives] = useState<Directive[]>([])
   useEffect(() => {
@@ -84,7 +84,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   const project = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project) : undefined
   const versions = project?.versions ?? []
   // 오른쪽 진행 상황은 어느 화면에서든 기능 명세·ERD 둘 다 보여준다
-  // 확인 필요 항목 + 이 화면에서 처리할 PM 지시 항목(필수)
+  // 확인 필요 항목 + 이 화면에서 처리할 수정 지시 항목(필수)
   const specItems = useMemo(() => [...specReview(design, draft.functions, draft.state), ...directiveItems(directives, 'spec', route.version)],
     [design, draft.functions, draft.state, directives, route.version])
   const erdItems = useMemo(() => [...erdReview(design, draft.entities, draft.state), ...directiveItems(directives, 'erd', route.version)],
@@ -126,8 +126,8 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     if (next) return at ?? next.created_at
     return at && myJob?.source === source && myJob.status !== 'failed' ? at : undefined
   }
-  // PM 수정 지시: 이 단계로 돌려보낸 지시 중 아직 새 버전으로 고치지 않은 것 (지시 뒤에 같은 단계 버전이 생기면 처리된 것)
-  // 이 화면에서 처리할 PM 수정 지시 (기능 명세: 그 기능 명세 / ERD: 지시를 처리할 ERD 버전)
+  // 수정 지시: 이 단계로 돌려보낸 지시 중 아직 새 버전으로 고치지 않은 것 (지시 뒤에 같은 단계 버전이 생기면 처리된 것)
+  // 이 화면에서 처리할 수정 지시 (기능 명세: 그 기능 명세 / ERD: 지시를 처리할 ERD 버전)
   const request = useMemo(() => {
     if (route.page !== 'spec' && route.page !== 'erd') return undefined
     const page = route.page
@@ -136,7 +136,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     return d ? { version: d.final, by: d.by ?? { id: 0, name: 'PM', role: 'pm' }, at: d.at, comment: d.comment,
       items: d.items.filter((i) => i.stage === page) } : undefined
   }, [directives, route.page, route.version])
-  // 이 기능 명세 계보에서 PM이 승인한 최종본 (기능 명세·ERD 화면에 알린다: 고치면 새 버전 → 다시 승인)
+  // 이 기능 명세 계보에서 최종 승인한 최종본 (기능 명세·ERD 화면에 알린다: 고치면 새 버전 → 다시 승인)
   const approvedFinal = versions.find((v) => v.stage === 'final' && v.approval?.decision === 'approve'
     && specOf(versions, v.design_version) === targets.spec)
   const finalized = {
@@ -290,9 +290,8 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
       }
     >
       <p className="sr-only">v{route.version} · {formatDate(design.meta.generated_at)} 생성</p>
-      <StageStepper page={route.page} version={route.version} targets={targets} finalized={finalized}
-        decision={finalRecord?.approval} onGo={(p) => open(p)}
-        developed={{ at: finalRecord?.develop?.at }} />
+      <StageStepper page={route.page} focus={route.focus} version={route.version} targets={targets} finalized={finalized}
+        decision={finalRecord?.approval} onGo={(p, f) => open(p, f)} develop={finalRecord?.develop} git={finalRecord?.git} />
       {/* 기술 스택: 원문이 정했으면 그대로 따르고, 개발 틀이 없는 스택이면 여기서부터 알린다 (고르는 건 확인 질문 TQ-001) */}
       {route.page === 'spec' && <StackNote project={route.project} version={route.version} hideWhenPending className="mb-4" />}
       {lockReason && (
@@ -344,7 +343,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         <p role="note" className="mb-4 flex items-start gap-2 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-label text-warn">
           <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>
-            <strong className="font-semibold">PM 수정 지시</strong> (최종본 v{request.version} · {request.by.name} · {formatDate(request.at)})
+            <strong className="font-semibold">수정 지시</strong> (최종본 v{request.version} · {request.by.name} · {formatDate(request.at)})
             {request.comment && <span className="block text-fg">{request.comment}</span>}
             {request.items.length > 0 && (
               <span className="mt-1 flex flex-col gap-0.5">

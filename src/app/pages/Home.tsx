@@ -17,7 +17,7 @@ export function Home({ shell }: { shell: ShellBase }) {
   const { user, projects, navigate, onReloadProjects: onReload } = shell
   const list = projects.state === 'ready' ? projects.data : []
   const drafts = useMemo(() => draftSummaries(), [])
-  // 검토할 초안: PM이 최종 승인한 프로젝트는 빼고, 승인 뒤에 새 버전(다시 고친 기능 명세·ERD 등)이 생겼으면 다시 센다
+  // 검토할 초안: 최종 승인한 프로젝트는 빼고, 승인 뒤에 새 버전(다시 고친 기능 명세·ERD 등)이 생겼으면 다시 센다
   const pending = list.filter((p) => {
     const approvedAt = p.versions.filter((v) => v.stage === 'final' && v.approval?.decision === 'approve')
       .map((v) => v.approval!.at).sort().at(-1)
@@ -59,7 +59,7 @@ export function Home({ shell }: { shell: ShellBase }) {
             </h1>
             <p className="relative mt-3 max-w-md text-label text-hero-muted">
               {pending.length ? '기능 명세서와 ERD 초안을 고치고, 애매한 항목을 결정해 최종 확정하세요.'
-                : list.length ? `프로젝트 ${list.length}개 모두 PM이 최종 승인했습니다. 새 문서를 올리거나 최종 개발물을 확인하세요.` : '새 문서를 올려 시작하세요.'}
+                : list.length ? `프로젝트 ${list.length}개 모두 최종 승인했습니다. 새 문서를 올리거나 최종 개발물을 확인하세요.` : '새 문서를 올려 시작하세요.'}
               {pending.length > 0 && list.length > pending.length && ` (최종 승인된 ${list.length - pending.length}개는 뺌)`}
             </p>
             {latest && (

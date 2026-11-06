@@ -21,7 +21,7 @@ export const NEEDS: Record<Permission, string> = {
   spec_confirm: "기능 명세 확정(내보내기)은 PM만 할 수 있습니다. 개발자는 '수정 완료 승인 요청'을 보내 주세요",
   erd_edit: 'ERD 수정은 PM·개발자만 할 수 있습니다',
   erd_confirm: 'ERD 최종 확정은 PM·개발자만 할 수 있습니다',
-  final_decide: '최종 승인·수정 지시와 기술 스택은 PM만 정할 수 있습니다',
+  final_decide: '최종 승인·수정 지시와 기술 스택은 PM·개발자만 정할 수 있습니다',
   develop: '최종 개발하기·합치기·원격 올리기는 개발자만 할 수 있습니다',
   preview_stop: '실행 미리보기 끄기는 PM·개발자만 할 수 있습니다',
   repo_write: '브랜치·코드 고치기·저장하기·합치기 요청은 개발자만 할 수 있습니다',

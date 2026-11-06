@@ -164,7 +164,7 @@ export interface VersionRecord {
   summary?: string[]
   db_validation?: string
   db_engine?: string
-  /** PM이 최종 산출물 화면에서 고른 기술 스택 (이것이 있어야 '확정'). parts: 화면·백엔드·DB를 나눠 고른 값 */
+  /** 최종 산출물 화면에서 고른 기술 스택 (이것이 있어야 '확정'). parts: 화면·백엔드·DB를 나눠 고른 값 */
   tech_stack?: { stack: string; basis: string; parts?: Record<'frontend' | 'backend' | 'database', string> }
   /** 최종 개발하기 기록 (승인한 최종본): 누가·언제·AI 사용 여부·미리보기 빌드 여부 */
   develop?: {
@@ -192,7 +192,7 @@ export interface VersionRecord {
     pushed?: Record<string, string>; urls?: Record<string, string> }
   /** 화면 요청으로 만든 사람 */
   created_by?: { id: number; name: string; role: string }
-  /** 최종본: PM의 마지막 결정(승인·수정 지시)과 그 기록 */
+  /** 최종본: 마지막 결정(승인·수정 지시)과 그 기록 */
   approval?: import('./api').Approval
   approvals?: import('./api').Approval[]
   db_errors?: string[]

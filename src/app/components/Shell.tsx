@@ -226,7 +226,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
     : picked && !top.includes(picked) ? [...top.slice(0, PROJECTS_SHOWN - 1), picked] : top
 
   // 초안은 이 브라우저 저장소에 있으므로 화면을 옮길 때마다 다시 센다
-  // 서버의 버전 기록으로 센다 (어느 PC에서 보든 같다): PM이 최종본을 승인한 프로젝트 / 아직인 프로젝트
+  // 서버의 버전 기록으로 센다 (어느 PC에서 보든 같다): 최종본을 최종 승인한 프로젝트 / 아직인 프로젝트
   const approved = list.filter((p) => p.versions.some((v) => v.stage === 'final' && v.approval?.decision === 'approve')).length
 
   // 프로젝트 이름 오른쪽 클릭 → 작은 메뉴 ('프로젝트 삭제', PM만) → 이름을 적는 확인 창

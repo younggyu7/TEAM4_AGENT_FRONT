@@ -49,7 +49,7 @@ export interface Member {
   permissions: Permission[]
 }
 
-/** 끝나지 않은 PM 수정 지시와 진행 (서버 services/directives.py가 계산). 기능 명세가 대상이면 기능 명세 먼저,
+/** 끝나지 않은 수정 지시와 진행 (서버 services/directives.py가 계산). 기능 명세가 대상이면 기능 명세 먼저,
  * ERD 항목은 새 기능 명세의 ERD(erd_version)가 생긴 뒤 그 ERD에서 처리한다. 그동안 옛 ERD는 잠긴다 */
 export interface Directive {
   project: string
@@ -396,7 +396,7 @@ export async function resetPassword(id: number, password: string): Promise<void>
   await post('/users/password', { id, password })
 }
 
-/* ------------------------------------------------------------ 수정 초안 공유·PM 결정 */
+/* ------------------------------------------------------------ 수정 초안 공유·최종 결정 */
 type Who = { id: number; name: string; role: string }
 
 /** 변경 내역 한 묶음: 누가·언제·무엇을 (서버가 저장할 때 이전 초안과 비교해 남긴다). event: 승인 요청·취소·반려·확정 */

@@ -25,7 +25,7 @@ const RUN: Record<PreviewStatus['status'], { label: string; tone: Tone }> = {
 }
 
 /**
- * 최종 개발물: PM이 승인한 최종본을 1 개발(코드 + 예시 데이터 화면) → 2 실행(Docker) → 3 Git 단계로 나눠 보여 준다.
+ * 최종 개발물: 최종 승인한 최종본을 1 개발(코드 + 예시 데이터 화면) → 2 실행(Docker) → 3 Git 단계로 나눠 보여 준다.
  * 단계는 주소의 마지막 칸(focus)에 둔다 — 산출물 보기 '최종 개발하기'를 시작하면 1단계로 온다.
  * 위의 '결과물 미리보기'는 1단계면 예시 데이터 화면, 2·3단계면 실행 미리보기(새 탭에서 Docker를 켜고 앱 화면)를 연다.
  */
@@ -49,6 +49,10 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const [remote, setRemote] = useState<GitSettings | null>(null)
   const developed = record?.develop
   const step: Step = given === '2' || given === '3' ? given : '1'
+  // 맨 위 '테스트(검증)'에서 오면 1단계의 자동 확인 줄로 내려 보여 준다
+  useEffect(() => {
+    if (given === 'check' && record?.develop) document.getElementById('develop-check')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [given, record?.develop])
   // 오른쪽 '업무 로직 현황'에서 파일을 고르면 1단계(코드 보기)로 옮긴다 (코드 보기가 그 파일을 연다)
   const [openPath, setOpenPath] = useState('')
   useEffect(() => {
@@ -74,7 +78,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   }, [project, developed])
 
   if (!record || record.approval?.decision !== 'approve') {
-    return <Card><ErrorNote message="PM이 승인한 최종본이 없습니다." hint="최종 산출물에서 PM이 승인하면 이 화면이 열립니다." /></Card>
+    return <Card><ErrorNote message="최종 승인한 최종본이 없습니다." hint="최종 산출물에서 최종 승인하면 이 화면이 열립니다." /></Card>
   }
   const allowed = can(user, 'develop')
   const canStop = can(user, 'preview_stop')
@@ -182,7 +186,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
             </Row>
           )}
           {developed?.check !== undefined && (
-            <Row label="자동 확인">
+            <Row label="자동 확인" id="develop-check">
               {developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
                 : !developed.check.counts ? <span className="text-danger">{developed.check.message}</span>
                 : (
@@ -306,9 +310,9 @@ function Log({ title, lines }: { title: string; lines: string[] }) {
   )
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
+function Row({ label, children, id }: { label: string; children: ReactNode; id?: string }) {
   return (
-    <div className="grid gap-1 py-3 sm:grid-cols-[120px_1fr]">
+    <div id={id} className="grid scroll-mt-4 gap-1 py-3 sm:grid-cols-[120px_1fr]">
       <dt className="text-small font-medium text-fg-3">{label}</dt>
       <dd className="min-w-0">{children}</dd>
     </div>

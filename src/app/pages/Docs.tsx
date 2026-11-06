@@ -75,7 +75,7 @@ export function DocsView({ page, design, saved, versions, finalizedAt, project, 
             {finalizedAt && <FinalBadge at={finalizedAt} large />}
             {/* 최종 확정했으면 바로 받을 수 있게 강조, 확정 전에도 받을 수는 있다 */}
             <ZipButton project={project} version={version} variant={finalizedAt ? 'primary' : 'secondary'} />
-            {/* PM이 승인한 최종본: 이 산출물로 최종 개발하기 → 최종 개발물 화면(1 개발 · 2 실행 · 3 Git) */}
+            {/* 최종 승인한 최종본: 이 산출물로 최종 개발하기 → 최종 개발물 화면(1 개발 · 2 실행 · 3 Git) */}
             {versionRecord?.stage === 'final' && versionRecord.approval?.decision === 'approve' && (
               <DevelopActions project={project} record={versionRecord} user={user} onFinished={onReloadProjects} onStarted={() => onOpen('develop', '1')} />
             )}

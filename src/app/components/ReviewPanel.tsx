@@ -187,10 +187,10 @@ const CHOICES: { value: DispositionChoice; label: string; hint: string }[] = [
   { value: 'later', label: '미해결로 둠', hint: '고객 확인 등으로 나중에 정합니다' },
 ]
 
-/** PM 지시 항목 처리가 바뀌었음을 작업 화면에 알린다 (지시 목록을 다시 읽음) */
+/** 수정 지시 항목 처리가 바뀌었음을 작업 화면에 알린다 (지시 목록을 다시 읽음) */
 export const DIRECTIVES_CHANGED = 'directives:changed'
 
-/** PM 지시 처리: 반영함 / 그대로 둠(이유 필수). 서버(approval.resolutions)에 바로 남는다 (LLM 없음) */
+/** 수정 지시 처리: 반영함 / 그대로 둠(이유 필수). 서버(approval.resolutions)에 바로 남는다 (LLM 없음) */
 function DirectiveResolution({ item }: { item: ReviewItem }) {
   const d = item.directive!
   const [choice, setChoice] = useState<'applied' | 'kept' | ''>(d.resolution?.choice ?? '')

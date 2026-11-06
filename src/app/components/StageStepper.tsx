@@ -1,16 +1,11 @@
-import { Check, Files, Play } from '@phosphor-icons/react'
+import { Check, Files } from '@phosphor-icons/react'
 import { formatDate } from '../../labels'
+import type { VersionRecord } from '../../types'
 import { isDocPage, type Page, type StagePage } from '../lib/route'
 import { cx, WhyTip } from './ui'
 
-const STEPS: { id: StagePage; label: string; hint: string }[] = [
-  { id: 'spec', label: '기능 명세', hint: '고치고 애매한 부분 확인' },
-  { id: 'erd', label: 'ERD', hint: '테이블 고치고 새 버전 저장' },
-  { id: 'final', label: '최종 산출물', hint: 'ERD 관계도·DDL·보고서' },
-]
-
 /** 단계의 버전 표시. 아직 그 단계 버전이 없으면 앞 단계 번호를 그대로 쓰고 있다는 뜻으로 '(… 안의 초안)'처럼 적는다.
- * 최종 산출물은 확정 전에는 번호만 적고(아래 줄 '최종 확정 전'으로 충분, 칸 높이를 맞춘다) 확정한 뒤에만 '미리 보기'를 붙인다 */
+ * 최종 산출물은 확정 전에는 번호만 적고 확정한 뒤에만 '미리 보기'를 붙인다 */
 function versionLabel(stage: StagePage, t: Record<StagePage, string>, finalDone: boolean): string {
   const depthOf = (v: string) => v.split('.').length - 1
   const want = stage === 'spec' ? 0 : stage === 'erd' ? 1 : 2
@@ -20,119 +15,124 @@ function versionLabel(stage: StagePage, t: Record<StagePage, string>, finalDone:
   return finalDone ? `v${v} 미리 보기` : `v${v}`
 }
 
-/** 이 버전의 진행 단계. 앞 단계를 확정해야 다음 단계가 '진행 가능'으로 바뀌지만, 보기는 언제든 할 수 있다.
- * 맨 끝 '산출물 보기'는 단계가 아니라 지금 버전의 산출물(판단 기록·이슈·추적 …)을 읽기만 하는 화면이다. */
-export function StageStepper({ page, version, targets, finalized, decision, onGo, developed }: {
+type Develop = NonNullable<VersionRecord['develop']>
+type Tone = 'ok' | 'danger' | 'muted'
+
+/** 자동 확인(테스트) 칸의 상태: 최종 개발하기 끝에 Docker로 켜서 admin 로그인과 조회 API를 불러 본 결과 */
+function checkStatus(d?: Develop): { text: string; tone: Tone; done: boolean } {
+  if (!d) return { text: '개발 후', tone: 'muted', done: false }
+  const c = d.check
+  if (c === undefined) return { text: '자동 확인 기록 없음', tone: 'muted', done: false }
+  if (c === null) return { text: '서버 코드가 없어 하지 않음', tone: 'muted', done: false }
+  if (!c.counts) return { text: '확인 실패', tone: 'danger', done: false }
+  return c.ok ? { text: `통과 · 조회 API ${c.apis ?? 0}개`, tone: 'ok', done: true }
+    : { text: `서버 오류 ${c.counts.errors}개`, tone: 'danger', done: false }
+}
+
+/**
+ * 맨 위 진행 단계 (개발 방법론 순서): 요구사항 분석 → 설계 → 개발 범위 확정 → 개발 진행 → 테스트(검증) → 실행·마무리.
+ * 굵은 글씨는 단계 이름, 작은 글씨는 이 화면의 이름(기능 명세·ERD·최종 산출물·최종 개발물)과 버전이다. 안쪽 버튼·문구는 그대로 쓴다.
+ * 앞 단계를 확정해야 다음 단계가 '진행 가능'으로 바뀌지만, 보기는 언제든 할 수 있다. 4~6은 최종 승인한 뒤 열리는
+ * 최종 개발물 화면의 1단계 개발(4·5: 자동 확인은 1단계 안)과 2·3단계 실행·Git(6)으로 간다.
+ * '산출물 보기'는 단계가 아니라 지금 버전의 산출물(판단 기록·이슈·추적 …)을 읽기만 하는 화면이라 단계 줄 밖 버튼으로 둔다.
+ */
+export function StageStepper({ page, focus, version, targets, finalized, decision, onGo, develop, git }: {
   page: Page
+  /** 최종 개발물 화면의 안쪽 단계 ('1'·'2'·'3', 'check' = 1단계의 자동 확인) */
+  focus?: string
   version: string                      // 산출물 보기가 여는 버전 (지금 보는 버전)
   targets: Record<StagePage, string>   // 각 단계에서 열 버전 (v2 / v2.1 / v2.1.1)
   finalized: { spec?: string; erd?: string; final?: string }
-  /** 최종본에 대한 PM의 마지막 결정 */
+  /** 최종본에 대한 마지막 결정 */
   decision?: { decision: 'approve' | 'changes'; at: string }
-  onGo: (page: Page) => void
-  /** 마지막 칸 '최종 개발물 미리보기': PM이 승인하면(= 최종 개발하기를 누를 수 있으면) 열린다. at은 개발한 때 */
-  developed?: { at?: string }
+  onGo: (page: Page, focus?: string) => void
+  /** 최종본의 개발 기록 (개발한 때·자동 확인 결과) */
+  develop?: Develop
+  /** 최종본을 원격 git에 올린 기록 */
+  git?: VersionRecord['git']
 }) {
   const done = (id: StagePage) => Boolean(finalized[id])
   const approved = decision?.decision === 'approve'
-  const ready = (i: number) => i === 0 || done(STEPS[i - 1].id)
+  const onDevelop = page === 'develop'
+  const devStep = focus === '2' || focus === '3' ? 'run' : focus === 'check' ? 'check' : 'build'
+  const check = checkStatus(develop)
+  const steps: { key: string; label: string; screen: string; status: string; tone: Tone; done: boolean; current: boolean
+    locked?: string; go: () => void }[] = [
+    { key: 'spec', label: '요구사항 분석', screen: `기능 명세 ${versionLabel('spec', targets, done('final'))}`,
+      status: done('spec') ? `확정 ${formatDate(finalized.spec)}` : '진행 중', tone: done('spec') ? 'ok' : 'muted',
+      done: done('spec'), current: page === 'spec', go: () => onGo('spec') },
+    { key: 'erd', label: '설계', screen: `ERD ${versionLabel('erd', targets, done('final'))}`,
+      status: done('erd') ? `확정 ${formatDate(finalized.erd)}` : done('spec') ? '진행 중' : '앞 단계 확정 전',
+      tone: done('erd') ? 'ok' : 'muted', done: done('erd'), current: page === 'erd', go: () => onGo('erd') },
+    { key: 'final', label: '개발 범위 확정', screen: `최종 산출물 ${versionLabel('final', targets, done('final'))}`,
+      status: decision ? `${approved ? '최종 승인' : '수정 지시'} ${formatDate(decision.at)}`
+        : done('final') ? `최종 확정 ${formatDate(finalized.final)} · 승인 전` : done('erd') ? '최종 확정 전' : '앞 단계 확정 전 (미리 보기)',
+      tone: approved ? 'ok' : 'muted', done: approved, current: page === 'final', go: () => onGo('final') },
+    { key: 'build', label: '개발 진행', screen: '최종 개발하기',
+      status: !approved ? '최종 승인 후' : develop?.at ? `개발 ${formatDate(develop.at)}` : '개발 대기',
+      tone: develop?.at ? 'ok' : 'muted', done: Boolean(develop?.at), current: onDevelop && devStep === 'build',
+      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '1') },
+    { key: 'check', label: '테스트(검증)', screen: '자동 확인',
+      status: !approved ? '최종 승인 후' : check.text, tone: approved ? check.tone : 'muted', done: approved && check.done,
+      current: onDevelop && devStep === 'check',
+      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', 'check') },
+    { key: 'run', label: '실행·마무리', screen: '로컬 서버 · Git',
+      status: !approved ? '최종 승인 후' : !develop ? '개발 후' : git ? `Git 올림 ${formatDate(git.at)}` : '실행해 보고 Git에 올리기',
+      tone: git ? 'ok' : 'muted', done: Boolean(git), current: onDevelop && devStep === 'run',
+      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '2') },
+  ]
   return (
     <nav aria-label="진행 단계" className="mb-4">
-      <ol className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-        {STEPS.map((s, i) => {
-          const current = s.id === page
-          const isDone = done(s.id)
-          const status = s.id === 'final' && isDone && decision
-            ? `${decision.decision === 'approve' ? 'PM 승인' : '수정 지시'} ${formatDate(decision.at)}`
-            : isDone
-            ? `${s.id === 'final' ? '최종 확정' : '확정'} ${formatDate(finalized[s.id])}`
-            : s.id === 'final'
-              ? (ready(i) ? '최종 확정 전' : '앞 단계 확정 전 (미리 보기)')
-              : ready(i) ? '진행 중' : '앞 단계 확정 전'
-          return (
-            <li key={s.id}>
+      <ol className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        {steps.map((s, i) => (
+          <li key={s.key}>
+            <WhyTip text={s.locked ?? ''} align="left" className="w-full">
               <button
                 type="button"
-                aria-current={current ? 'step' : undefined}
-                onClick={() => onGo(s.id)}
+                disabled={Boolean(s.locked)}
+                aria-current={s.current ? 'step' : undefined}
+                onClick={s.go}
                 className={cx(
                   'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
-                  current ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
+                  s.locked ? 'cursor-not-allowed border-line bg-card/40 opacity-60'
+                    : s.current ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
                 )}
               >
                 <span
                   aria-hidden="true"
                   className={cx(
                     'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-small font-semibold tabular-nums',
-                    isDone ? 'bg-ok text-card' : current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
+                    s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
                   )}
                 >
-                  {isDone ? <Check size={14} weight="bold" /> : i + 1}
+                  {s.done ? <Check size={14} weight="bold" /> : i + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className={cx('block truncate text-label', current ? 'font-semibold' : 'font-medium text-fg-2')}>
-                    {s.label} <span className="font-normal text-fg-3 tabular-nums">{versionLabel(s.id, targets, done('final'))}</span>
+                  <span className={cx('block truncate text-label', s.current ? 'font-semibold' : 'font-medium text-fg-2')}>{s.label}</span>
+                  <span className="block truncate text-micro text-fg-3 tabular-nums">{s.screen}</span>
+                  <span className={cx('block truncate text-micro', s.tone === 'ok' ? 'text-ok' : s.tone === 'danger' ? 'text-danger' : 'text-fg-3')}>
+                    {s.status}
                   </span>
-                  <span className={cx('block truncate text-micro', isDone ? 'text-ok' : 'text-fg-3')}>{status}</span>
                 </span>
-                <span className="sr-only">{s.hint}</span>
               </button>
-            </li>
-          )
-        })}
-        <li>
-          <button
-            type="button"
-            aria-current={isDocPage(page) ? 'page' : undefined}
-            onClick={() => onGo('overview')}
-            className={cx(
-              'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
-              isDocPage(page) ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
-            )}
-          >
-            {/* PM이 최종 승인하면 초록 체크 (ERD 최종 확정만으로는 아니다: 승인을 받아야 개발에 넘기는 산출물) */}
-            <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md',
-              approved ? 'bg-ok text-card' : isDocPage(page) ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
-              {approved ? <Check size={14} weight="bold" /> : <Files size={14} weight="bold" />}
-            </span>
-            <span className="min-w-0">
-              <span className={cx('block text-label', isDocPage(page) ? 'font-semibold' : 'font-medium text-fg-2')}>
-                산출물 보기 <span className="font-normal text-fg-3 tabular-nums">v{version}</span>
-              </span>
-              <span className={cx('block truncate text-micro', approved ? 'text-ok' : 'text-fg-3')}>
-                {approved ? `PM 승인 ${formatDate(decision!.at)} · 판단 기록·이슈·추적` : '판단 기록·이슈·추적 (보기만)'}
-              </span>
-            </span>
-          </button>
-        </li>
-        <li>
-          <WhyTip text={approved ? '' : 'PM이 최종본을 승인하면 열립니다 (산출물 보기에서 최종 승인)'} align="left" className="w-full">
-            <button
-              type="button"
-              disabled={!approved}
-              aria-current={page === 'develop' ? 'page' : undefined}
-              onClick={() => onGo('develop')}
-              title={approved ? '개발 상태와 결과물 미리보기' : undefined}
-              className={cx(
-                'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
-                !approved ? 'cursor-not-allowed border-line bg-card/40 opacity-60'
-                  : page === 'develop' ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
-              )}
-            >
-              <span aria-hidden="true" className={cx('inline-flex size-7 shrink-0 items-center justify-center rounded-md',
-                developed?.at ? 'bg-ok text-card' : page === 'develop' ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3')}>
-                <Play size={14} weight="fill" />
-              </span>
-              <span className="min-w-0">
-                <span className={cx('block text-label', page === 'develop' ? 'font-semibold' : 'font-medium text-fg-2')}>최종 개발물 미리보기</span>
-                <span className={cx('block truncate text-micro', developed?.at ? 'text-ok' : 'text-fg-3')}>
-                  {!approved ? 'PM 승인 후' : developed?.at ? `개발 ${formatDate(developed.at)}` : '개발 대기'}
-                </span>
-              </span>
-            </button>
-          </WhyTip>
-        </li>
+            </WhyTip>
+          </li>
+        ))}
       </ol>
+      <div className="mt-2 flex justify-end">
+        <button
+          type="button"
+          aria-current={isDocPage(page) ? 'page' : undefined}
+          onClick={() => onGo('overview')}
+          className={cx(
+            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-small transition-colors duration-150',
+            isDocPage(page) ? 'border-fg bg-card font-semibold' : 'border-line bg-card/60 text-fg-2 hover:border-control hover:bg-card',
+          )}
+        >
+          <Files size={14} aria-hidden="true" />
+          산출물 보기 <span className="font-normal text-fg-3 tabular-nums">v{version} · 판단 기록·이슈·추적</span>
+        </button>
+      </div>
     </nav>
   )
 }
