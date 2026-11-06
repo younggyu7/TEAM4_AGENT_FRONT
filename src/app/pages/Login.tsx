@@ -9,8 +9,8 @@ const SLACK_ID = /^[UW][A-Z0-9]{6,20}$/   // 백엔드 services/users.py SLACK_I
 const SELECT = 'min-h-11 w-full rounded-md border border-control bg-card px-3 text-body text-fg focus-visible:border-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15'
 
 /** 로그인·회원가입. 왼쪽은 Runway식 검은 구획(큰 제목 + 장식), 오른쪽은 입력. 좁은 화면에서는 위아래로 쌓인다.
- * 가입하면 '승인 대기'가 되고, 관리자가 역할(기획·데이터 파트원·파트장, 팀장)을 정해 승인하면 로그인된다.
- * 처음 가입한 사람은 관리자·팀장이 된다. */
+ * 가입하면 '승인 대기'가 되고, 관리자가 역할(PM·개발자)을 정해 승인하면 로그인된다.
+ * 처음 가입한 사람은 관리자·PM이 된다. */
 export function Login({ onSignIn }: { onSignIn: (email: string, password: string, remember: boolean) => Promise<void> }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
@@ -89,7 +89,7 @@ export function Login({ onSignIn }: { onSignIn: (email: string, password: string
                 setMode('login')
                 setEmail(mail)
                 setPassword('')
-                setNotice(pending ? '가입했습니다. 관리자가 역할을 정해 승인하면 로그인할 수 있습니다.' : '가입했습니다. 첫 가입자라 관리자·팀장입니다. 로그인하세요.')
+                setNotice(pending ? '가입했습니다. 관리자가 역할을 정해 승인하면 로그인할 수 있습니다.' : '가입했습니다. 첫 가입자라 관리자·PM입니다. 로그인하세요.')
               }}
             />
           ) : (<>

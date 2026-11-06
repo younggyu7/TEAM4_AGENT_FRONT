@@ -17,7 +17,7 @@ export function Home({ shell }: { shell: ShellBase }) {
   const { user, projects, navigate, onReloadProjects: onReload } = shell
   const list = projects.state === 'ready' ? projects.data : []
   const drafts = useMemo(() => draftSummaries(), [])
-  // 검토할 초안: 팀장이 최종 승인한 프로젝트는 빼고, 승인 뒤에 새 버전(다시 고친 기능 명세·ERD 등)이 생겼으면 다시 센다
+  // 검토할 초안: PM이 최종 승인한 프로젝트는 빼고, 승인 뒤에 새 버전(다시 고친 기능 명세·ERD 등)이 생겼으면 다시 센다
   const pending = list.filter((p) => {
     const approvedAt = p.versions.filter((v) => v.stage === 'final' && v.approval?.decision === 'approve')
       .map((v) => v.approval!.at).sort().at(-1)
@@ -59,7 +59,7 @@ export function Home({ shell }: { shell: ShellBase }) {
             </h1>
             <p className="relative mt-3 max-w-md text-label text-hero-muted">
               {pending.length ? '기능 명세서와 ERD 초안을 고치고, 애매한 항목을 결정해 최종 확정하세요.'
-                : list.length ? `프로젝트 ${list.length}개 모두 팀장이 최종 승인했습니다. 새 문서를 올리거나 최종 개발물을 확인하세요.` : '새 문서를 올려 시작하세요.'}
+                : list.length ? `프로젝트 ${list.length}개 모두 PM이 최종 승인했습니다. 새 문서를 올리거나 최종 개발물을 확인하세요.` : '새 문서를 올려 시작하세요.'}
               {pending.length > 0 && list.length > pending.length && ` (최종 승인된 ${list.length - pending.length}개는 뺌)`}
             </p>
             {latest && (
@@ -178,7 +178,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
     }).catch(() => setLlm(null))
   }, [])
   const picked = llm?.models.find((m) => m.id === model)
-  // 담당자: 담당자(고른 회원 + 올리는 사람)와 팀장만 이 프로젝트를 본다. 나중에 프로젝트 화면에서 팀장이 바꾼다.
+  // 담당자: 담당자(고른 회원 + 올리는 사람)와 PM만 이 프로젝트를 본다. 나중에 프로젝트 화면에서 PM이 바꾼다.
   // Slack(백엔드 .env 워크스페이스 토큰이 있을 때): 업로드하면 프로젝트 비공개 채널을 자동으로 만들고 담당자를 초대한다
   const [slackOn, setSlackOn] = useState(false)
   const [people, setPeople] = useState<PickMember[]>([])
@@ -190,7 +190,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
       setPeople(r.members)
     }).catch(() => setPeople([]))
   }, [meId])
-  const always = (m: PickMember) => m.id === meId || m.role === 'lead'   // 올리는 사람·팀장은 늘 담당자
+  const always = (m: PickMember) => m.id === meId || m.role === 'pm'   // 올리는 사람·PM은 늘 담당자
   const assignees = people.filter((m) => always(m) || chosen.includes(m.id))
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
@@ -293,7 +293,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
         {people.length > 0 && (
           <fieldset className="rounded-lg border border-line p-4">
             <legend className="px-1 text-label font-medium">
-              담당자 <span className="font-normal text-fg-3">({assignees.length}명 · 담당자와 팀장만 이 프로젝트를 봅니다{slackOn
+              담당자 <span className="font-normal text-fg-3">({assignees.length}명 · 담당자와 PM만 이 프로젝트를 봅니다{slackOn
                 ? <> · Slack 비공개 채널 <span className="font-mono">#{slackChannelName(project || file?.name.replace(/\.[^.]+$/, '') || '')}</span>을 자동으로 만들어 초대</>
                 : ''})</span>
             </legend>
@@ -301,11 +301,11 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
               {people.map((m) => (
                 <Checkbox key={m.id} checked={always(m) || chosen.includes(m.id)} disabled={running || always(m)}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나 · 필수' : m.role === 'lead' ? ' · 필수' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
+                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나 · 필수' : m.role === 'pm' ? ' · 필수' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
               ))}
             </div>
             <p className="mt-1 text-micro text-fg-3">
-              담당자가 아닌 회원에게는 이 프로젝트가 목록·알림 어디에도 보이지 않습니다. 담당자는 나중에 프로젝트 화면에서 팀장이 바꿀 수 있습니다.
+              담당자가 아닌 회원에게는 이 프로젝트가 목록·알림 어디에도 보이지 않습니다. 담당자는 나중에 프로젝트 화면에서 PM이 바꿀 수 있습니다.
               {slackOn ? ' 알림은 그 채널에 알림마다 하나씩, 받을 담당자를 @멘션해 올라갑니다 (Slack 멤버 ID가 없는 담당자는 채널에 초대하지 못함).' : ''}
             </p>
           </fieldset>

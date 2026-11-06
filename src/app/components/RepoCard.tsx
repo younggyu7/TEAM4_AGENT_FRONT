@@ -69,8 +69,8 @@ const errorText = (e: unknown) => {
 
 /**
  * 최종 개발물 오른쪽 '코드 저장소' (GitKraken처럼): 모든 브랜치의 커밋을 칸 그래프로 보여 준다.
- * 보라 점 = AI(최종 개발하기, req-agent) 커밋, 초록 점 = 사람 커밋. main은 개발 파트장의 합치기와 최종 개발하기로만 바뀐다.
- * 개발 파트원·파트장: 새 브랜치 · 합치기 요청 · 메인 가져오기. 개발 파트장: 합치기 요청 차이 보기·합치기·반려, 원격 올리기.
+ * 보라 점 = AI(최종 개발하기, req-agent) 커밋, 초록 점 = 사람 커밋. main은 개발자의 합치기와 최종 개발하기로만 바뀐다.
+ * 개발자: 새 브랜치 · 합치기 요청 · 메인 가져오기 · 합치기 요청 차이 보기·합치기·반려 · 원격 올리기 (PM은 보기만).
  */
 export function RepoCard({ project, version, user }: { project: string; version: string; user: User }) {
   const [repo, setRepo] = useState<RepoOverview | null>(null)
@@ -147,7 +147,7 @@ export function RepoCard({ project, version, user }: { project: string; version:
             <Button size="sm" variant="secondary" icon={<GitPullRequest />}
               disabled={!write || busy || !current.ahead || current.changes > 0 || Boolean(current.request)}
               title={!write ? NEEDS.repo_write : current.request ? '이미 합치기 요청 중입니다' : current.changes > 0 ? '먼저 코드 보기에서 저장하기를 하세요'
-                : !current.ahead ? 'main에 없는 커밋이 없습니다' : '개발 파트장에게 main에 합쳐 달라고 요청합니다'}
+                : !current.ahead ? 'main에 없는 커밋이 없습니다' : '개발자에게 main에 합쳐 달라고 요청합니다'}
               onClick={() => setDialog('request')}>합치기 요청</Button>
             <Button size="sm" variant="ghost" icon={<ArrowDown />} disabled={!write || busy || !current.behind || current.changes > 0}
               title={!write ? NEEDS.repo_write : current.changes > 0 ? '먼저 저장하기를 하세요' : current.behind ? 'main의 새 커밋을 이 브랜치에 합칩니다' : 'main의 최신 내용이 이미 있습니다'}
@@ -274,7 +274,7 @@ function RequestDialog({ project, branch, ahead, onClose, onDone }: { project: s
   }
   return (
     <Modal title={`합치기 요청 · ${branch}`} onClose={onClose}>
-      <p className="text-small text-fg-3">커밋 {ahead}개를 main에 합쳐 달라고 개발 파트장에게 알립니다. 합치거나 반려하면 알림으로 돌아옵니다.</p>
+      <p className="text-small text-fg-3">커밋 {ahead}개를 main에 합쳐 달라고 개발자에게 알립니다. 합치거나 반려하면 알림으로 돌아옵니다.</p>
       <TextArea dense rows={3} aria-label="요청 메모" placeholder="무엇을 고쳤는지 (선택)" value={text} onChange={(e) => setText(e.target.value)} />
       {error && <p role="alert" className="text-danger">{error}</p>}
       <div className="flex justify-end gap-2">

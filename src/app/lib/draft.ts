@@ -4,7 +4,7 @@ import type { Attribute, Design, Entity, FunctionSpec } from '../../types'
 import { listStoreKeys, readStore, removeStore, writeStore } from './storage'
 
 // 초안 편집 상태. 원본 design.json은 그대로 두고, 바뀐 기능·테이블과 검토 체크만 따로 저장한다.
-// 서버(POST /drafts)에 버전별로 저장해 같은 파트 회원이 함께 고치고(파트원 수정 → 파트장 확정), 이 브라우저(localStorage)는
+// 서버(POST /drafts)에 버전별로 저장해 담당자가 함께 고치고(개발자 수정 → 기능 명세는 PM 확정), 이 브라우저(localStorage)는
 // 바로 보여 줄 사본으로 둔다. 다른 사람이 먼저 저장했으면(409) '다시 불러오기'로 서버 초안을 받는다.
 
 export interface DraftState {
@@ -67,10 +67,10 @@ export function useDraft(design: Design, project: string, version: string, canSa
   const [save, setSave] = useState<SaveStatus>('saved')
   const [savedAt, setSavedAt] = useState<string | undefined>(() => readStore<DraftState>(key)?.updatedAt)
   const [sync, setSync] = useState<DraftSync>({ status: 'loading' })
-  // 서버의 변경 내역(누가·언제·무엇을)과 파트원의 수정 완료 승인 요청
+  // 서버의 변경 내역(누가·언제·무엇을)과 개발자의 수정 완료 승인 요청
   const [log, setLog] = useState<DraftLogEntry[]>([])
   const [request, setRequest] = useState<ReviewRequest | null>(null)
-  const [rejection, setRejection] = useState<ReviewRejection | null>(null)   // 파트장·팀장의 마지막 반려
+  const [rejection, setRejection] = useState<ReviewRejection | null>(null)   // PM의 마지막 반려
   // 저장소에서 읽은 그대로인 상태는 다시 쓰지 않는다 (손대지 않은 버전이 '편집 중'으로 잡히지 않게)
   const loaded = useRef<{ key: string; state: DraftState }>({ key, state })
   const rev = useRef(0)            // 서버 초안의 rev (저장할 때 함께 보내 늦은 저장을 막는다)
@@ -271,7 +271,7 @@ export function useDraft(design: Design, project: string, version: string, canSa
     /** 대상 ID → 마지막으로 바꾼 사람과 내용 (기능·테이블 수정, 질문 답, 확인 표시 'a:기능:규칙'·'i:지적') */
     lastChange: Object.fromEntries(log.filter((e) => !e.event).flatMap((e) => e.changes.filter((c) => c.target)
       .map((c) => [c.target, { by: e.by.name, what: c.what }]))) as Record<string, { by: string; what: string }>,
-    /** 파트원: 수정 완료 승인 요청 (지금 초안을 먼저 서버에 쓰고 요청) */
+    /** 개발자: 기능 명세 수정 완료 승인 요청 (지금 초안을 먼저 서버에 쓰고 요청) */
     requestReview: async (note: string) => {
       // 아직 서버에 안 쓴 수정이 있으면 먼저 쓴다 (요청 뒤에 저장되면 '요청 뒤 수정'으로 요청이 취소된다)
       for (let i = 0; inflight.current && i < 50; i++) await new Promise((ok) => window.setTimeout(ok, 100))
@@ -286,7 +286,7 @@ export function useDraft(design: Design, project: string, version: string, canSa
       setLog(r.log)
     },
     rejection,
-    /** 파트장·팀장: 승인 요청 반려 (사유 필수). 요청한 파트원에게 Slack으로도 간다 */
+    /** PM: 승인 요청 반려 (사유 필수). 요청한 개발자에게 Slack으로도 간다 */
     rejectReview: async (reason: string) => {
       const r = await rejectReview(project, version, reason)
       setRequest(null)

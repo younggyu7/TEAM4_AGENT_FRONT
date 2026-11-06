@@ -28,11 +28,11 @@ export interface ReviewItem {
   auto: boolean            // 편집으로만 해결 (체크 불가)
   question?: Question
   issue?: Issue
-  /** 팀장 수정 지시 항목: 반영함 / 그대로 둠(이유)을 서버에 남긴다 (LLM 없음) */
+  /** PM 수정 지시 항목: 반영함 / 그대로 둠(이유)을 서버에 남긴다 (LLM 없음) */
   directive?: { project: string; final: string; stage: 'spec' | 'erd'; target_id: string; resolution: Directive['items'][number]['resolution'] }
 }
 
-/** 이 화면(단계·버전)에서 처리할 팀장 지시 항목 → 필수 확인 항목 */
+/** 이 화면(단계·버전)에서 처리할 PM 지시 항목 → 필수 확인 항목 */
 export function directiveItems(directives: Directive[], page: 'spec' | 'erd', version: string): ReviewItem[] {
   return directives
     .filter((d) => page === 'spec' ? d.targets.includes('spec') && d.spec_version === version && !d.spec_done
@@ -40,8 +40,8 @@ export function directiveItems(directives: Directive[], page: 'spec' | 'erd', ve
     .flatMap((d) => d.items.filter((i) => i.stage === page).map((i) => ({
       id: `directive:${d.final}:${i.stage}:${i.target_id}`,
       kind: 'directive' as const,
-      title: `팀장 지시: ${i.note || d.comment || '고칠 것'}`,
-      detail: `${d.by?.name ?? '팀장'} · 최종본 v${d.final}${i.resolution ? ` · ${i.resolution.choice === 'applied' ? '반영함' : '그대로 둠'} (${i.resolution.by.name})${i.resolution.note ? ` — ${i.resolution.note}` : ''}` : ''}`,
+      title: `PM 지시: ${i.note || d.comment || '고칠 것'}`,
+      detail: `${d.by?.name ?? 'PM'} · 최종본 v${d.final}${i.resolution ? ` · ${i.resolution.choice === 'applied' ? '반영함' : '그대로 둠'} (${i.resolution.by.name})${i.resolution.note ? ` — ${i.resolution.note}` : ''}` : ''}`,
       targetId: i.target_id,
       targetLabel: i.label,
       required: true,
@@ -58,7 +58,7 @@ export const KIND_LABEL: Record<ReviewKind, string> = {
   assumption: '가정',
   issue: '검토 지적',
   remark: '의미 검토 지적',
-  directive: '팀장 지시',
+  directive: 'PM 지시',
   check: '자동 검사',
 }
 

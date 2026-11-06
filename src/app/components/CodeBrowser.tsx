@@ -55,7 +55,7 @@ function holeRanges(file: AppFileContent): { from: number; to: number; empty: bo
 /**
  * 최종 개발물 1단계 코드 보기 (git·VS Code처럼 왼쪽 파일 구성, 가운데 코드).
  * 업무 로직 자리가 코드가 넣은 기본값 그대로면 '빈 로직'으로 표시한다 (AI로 채우지 않았거나 사람이 아직 안 짠 곳).
- * 보는 브랜치는 오른쪽 '코드 저장소'와 같다. main은 읽기만 하고, 브랜치에서 개발 파트원·파트장이 고쳐 저장(작업 폴더)한 뒤
+ * 보는 브랜치는 오른쪽 '코드 저장소'와 같다. main은 읽기만 하고, 브랜치에서 개발자가 고쳐 저장(작업 폴더)한 뒤
  * '저장하기'로 커밋한다. 커밋하지 않은 파일은 '변경'으로 표시한다. 고친 파일은 다시 개발해도 덮어쓰지 않는다.
  */
 export function CodeBrowser({ project, branch, canEdit, refreshKey, openPath }: { project: string; branch: string; canEdit: boolean; refreshKey?: string; openPath?: string }) {
@@ -185,7 +185,7 @@ export function CodeBrowser({ project, branch, canEdit, refreshKey, openPath }: 
           <Checkbox checked={onlyEmpty} onChange={setOnlyEmpty} label="빈 로직 있는 파일만" />
         </span>
       </div>
-      {onMain && <p className="rounded-md bg-sunken px-3 py-1.5 text-small text-fg-3">{MAIN_READONLY}. main은 최종 개발하기와 개발 파트장의 합치기로만 바뀝니다.</p>}
+      {onMain && <p className="rounded-md bg-sunken px-3 py-1.5 text-small text-fg-3">{MAIN_READONLY}. main은 최종 개발하기와 개발자의 합치기로만 바뀝니다.</p>}
       <div className="grid min-h-[480px] overflow-hidden rounded-md border border-line lg:grid-cols-[280px_1fr]">
         <nav aria-label="파일 구성" className="max-h-[70vh] overflow-auto border-b border-line bg-card/60 py-2 lg:border-b-0 lg:border-r">
           <ul>{root.children.map((c) => renderNode(c, 0))}</ul>

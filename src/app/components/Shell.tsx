@@ -226,10 +226,10 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
     : picked && !top.includes(picked) ? [...top.slice(0, PROJECTS_SHOWN - 1), picked] : top
 
   // 초안은 이 브라우저 저장소에 있으므로 화면을 옮길 때마다 다시 센다
-  // 서버의 버전 기록으로 센다 (어느 PC에서 보든 같다): 팀장이 최종본을 승인한 프로젝트 / 아직인 프로젝트
+  // 서버의 버전 기록으로 센다 (어느 PC에서 보든 같다): PM이 최종본을 승인한 프로젝트 / 아직인 프로젝트
   const approved = list.filter((p) => p.versions.some((v) => v.stage === 'final' && v.approval?.decision === 'approve')).length
 
-  // 프로젝트 이름 오른쪽 클릭 → 작은 메뉴 ('프로젝트 삭제', 팀장만) → 이름을 적는 확인 창
+  // 프로젝트 이름 오른쪽 클릭 → 작은 메뉴 ('프로젝트 삭제', PM만) → 이름을 적는 확인 창
   const [menu, setMenu] = useState<{ project: Project; x: number; y: number } | null>(null)
   const [deleting, setDeleting] = useState<Project | null>(null)
   const canDelete = can(user, 'project_delete')
@@ -248,7 +248,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
       window.removeEventListener('keydown', onKey)
     }
   }, [menu])
-  // 프로젝트 이름 옆 연필 (팀장만, 설계 버전 제목처럼): 화면·Slack에 보이는 이름만 바꾸고 프로젝트 ID·주소는 그대로
+  // 프로젝트 이름 옆 연필 (PM만, 설계 버전 제목처럼): 화면·Slack에 보이는 이름만 바꾸고 프로젝트 ID·주소는 그대로
   const canRename = can(user, 'project_rename')
   const [renaming, setRenaming] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
@@ -398,7 +398,7 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
             className="flex min-h-8 w-full items-center gap-2 rounded-sm px-2.5 text-left text-small text-danger transition-colors duration-150 hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent">
             <Trash size={14} aria-hidden="true" /> 프로젝트 삭제
           </button>
-          {!canDelete && <p className="px-2.5 pb-1 text-micro text-fg-3">팀장만 지울 수 있습니다</p>}
+          {!canDelete && <p className="px-2.5 pb-1 text-micro text-fg-3">PM만 지울 수 있습니다</p>}
         </div>
       )}
       <ProjectDeleteDialog project={deleting} onClose={() => setDeleting(null)} onDeleted={onDeleted} />
