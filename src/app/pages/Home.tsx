@@ -301,7 +301,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
               {people.map((m) => (
                 <Checkbox key={m.id} checked={always(m) || chosen.includes(m.id)} disabled={running || always(m)}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나' : m.role === 'lead' ? ' · 늘 포함' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
+                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나 · 필수' : m.role === 'lead' ? ' · 필수' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
               ))}
             </div>
             <p className="mt-1 text-micro text-fg-3">

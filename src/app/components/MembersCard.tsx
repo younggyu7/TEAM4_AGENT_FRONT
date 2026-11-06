@@ -65,7 +65,7 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
           <ul className="flex flex-wrap gap-1.5" aria-label="담당자">
             {info.members.map((m) => (
               <li key={m.id}>
-                <Badge tone={slackNote(m) ? 'warn' : 'neutral'}>{m.name} · {m.role_label}{m.always ? ' · 항상' : ''}{slackNote(m)}</Badge>
+                <Badge tone={slackNote(m) ? 'warn' : 'neutral'}>{m.name} · {m.role_label}{m.always ? ' · 필수' : ''}{slackNote(m)}</Badge>
               </li>
             ))}
           </ul>
@@ -77,7 +77,7 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
                 <Checkbox key={m.id} checked={always.has(m.id) || m.role === 'lead' || chosen.includes(m.id)}
                   disabled={busy || always.has(m.id) || m.role === 'lead'}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-fg-3">{m.role_label}{m.role === 'lead' ? ' · 늘 포함' : m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
+                  label={<span>{m.name} <span className="text-fg-3">{m.role_label}{m.role === 'lead' ? ' · 필수' : m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
               ))}
             </div>
             <p className="mt-1.5 text-micro text-fg-3">
