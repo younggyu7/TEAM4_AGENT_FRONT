@@ -118,14 +118,16 @@ export function Shell({ user, onSignOut, route, navigate, projects, onReloadProj
             {children}
           </main>
           {insights && (
-            // 고정: 늘 보이는 칸 (왼쪽 선으로 너비 조절) / 고정 풀림: 너비 0에서 천천히 늘어나며 본문을 밀어 나온다
+            // 고정: 늘 보이는 칸 (왼쪽 선으로 너비 조절) / 고정 풀림: 너비 0에서 천천히 늘어나며 본문을 밀어 나온다.
+            // 고정일 때 칸은 화면 높이로 두고 안쪽 div만 스크롤한다: 너비 조절 선이 스크롤과 같이 밀려 올라가지 않고 칸 끝까지 이어지게
             <aside aria-label="진행 상황"
               onMouseEnter={() => { if (!pinned) peekLater(true, 0) }} onMouseLeave={() => { if (!pinned) peekLater(false, 400) }}
               className={cx('min-w-0',
-                pinned ? 'space-y-4 xl:sticky xl:top-5 xl:max-h-[calc(100dvh-2.5rem)] xl:overflow-y-auto xl:pl-2'
+                pinned ? 'xl:sticky xl:top-5 xl:h-[calc(100dvh-2.5rem)] xl:pl-2'
                   : 'space-y-4 xl:sticky xl:top-5 xl:w-[var(--peek-w)] xl:shrink-0 xl:overflow-hidden xl:transition-[width] xl:duration-500 xl:ease-in-out')}
               style={pinned ? undefined : { '--peek-w': peek ? `${layout.right + 16}px` : '0px' } as CSSProperties}>
-              <div className={cx('space-y-4', !pinned && 'xl:max-h-[calc(100dvh-2.5rem)] xl:w-[var(--right-w)] xl:overflow-y-auto xl:ml-4')}>
+              <div className={cx('space-y-4', pinned ? 'xl:h-full xl:overflow-y-auto'
+                : 'xl:max-h-[calc(100dvh-2.5rem)] xl:w-[var(--right-w)] xl:overflow-y-auto xl:ml-4')}>
                 <div className="hidden justify-end xl:flex">
                   <button type="button" onClick={() => { save({ rightPinned: !pinned }); setPeek(false) }}
                     aria-pressed={pinned} title={pinned ? '고정 풀기: 숨겼다가 오른쪽 끝에 마우스를 잠깐 대면 나타남' : '고정: 늘 보이고 너비를 조절'}
