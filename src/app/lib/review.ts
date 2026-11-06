@@ -150,7 +150,7 @@ export function specReview(design: Design, functions: FunctionSpec[], draft: Dra
         kind: mark.kind,
         title: mark.text,
         detail: mark.kind === 'unconfirmed'
-          ? "'(가정)' 한도를 넘어 고객 확인이 필요한 규칙입니다. 지금 초안은 이 추천안으로 설계했습니다. '추천안 맞음'이면 내보낼 때 '(결정)'으로 바뀝니다 (LLM 없음)." : undefined,
+          ? "고객 확인이 필요한 규칙입니다 (추천안을 정하지 못했거나, 서버가 '(가정)' 한도 방식일 때 한도를 넘은 규칙). 지금 초안은 이 문장으로 설계했습니다. '추천안 맞음'이면 내보낼 때 '(결정)'으로 바뀝니다 (LLM 없음)." : undefined,
         targetId: f.function_id,
         targetLabel: f.name,
         required: mark.kind === 'unconfirmed',   // 가정은 권장, 확인 필요는 확정 전에 반드시 본다
