@@ -153,6 +153,8 @@ export interface PreviewStatus {
   /** 실행 중일 때 마지막으로 쓴 뒤 지난 초 (idle_limit이 되면 꺼짐) */
   idle_seconds: number | null
   idle_limit: number
+  /** 밖에서 여는 앱 주소 (백엔드 PREVIEW_PUBLIC_HOST가 있을 때). 없으면 appUrl(port) */
+  url?: string | null
 }
 
 /** 앱이 처음 뜰 때 만든 시연 계정 (개발 파트원·파트장·팀장만) */
@@ -162,8 +164,9 @@ export async function getPreviewAccounts(project: string): Promise<PreviewAccoun
   return ((await (await request(`/preview/${encodeURIComponent(project)}/accounts`)).json()) as { accounts: PreviewAccount[] }).accounts
 }
 
-/** 실행 중인 앱 주소: 우리 도구에 들어온 주소에 앱 포트 (팀원 PC에서도 같은 주소로 연다) */
-export const appUrl = (port: number) => `${window.location.protocol}//${window.location.hostname}:${port}/`
+/** 실행 중인 앱 주소: 백엔드가 준 주소, 없으면 우리 도구에 들어온 주소에 앱 포트 (팀원 PC에서도 같은 주소로 연다).
+ * 화면을 Vercel처럼 백엔드와 다른 곳에 두면 화면 주소에 포트를 붙여서는 앱에 닿지 않으므로 백엔드 주소(url)를 쓴다 */
+export const appUrl = (port: number, url?: string | null) => url || `${window.location.protocol}//${window.location.hostname}:${port}/`
 
 export async function getPreviewStatus(project: string): Promise<PreviewStatus> {
   return (await (await request(`/preview/${encodeURIComponent(project)}/status`)).json()) as PreviewStatus

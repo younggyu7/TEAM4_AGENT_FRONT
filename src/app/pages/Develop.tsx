@@ -237,7 +237,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                     <Badge tone={state.tone}>{state.label}</Badge>
                     {run.stale && run.status === 'running' && <Badge tone="warn">다시 개발함 · 다음에 열 때 새로 빌드</Badge>}
                     {run.status === 'running' && run.port && (
-                      <a href={appUrl(run.port)} target="_blank" rel="noopener" className="font-mono text-small text-info underline-offset-4 hover:underline">{appUrl(run.port)}</a>
+                      <a href={appUrl(run.port, run.url)} target="_blank" rel="noopener" className="font-mono text-small text-info underline-offset-4 hover:underline">{appUrl(run.port, run.url)}</a>
                     )}
                     <span className="text-fg-2">{run.status === 'running'
                       ? `쓰는 동안은 켜 두고 ${Math.round(run.idle_limit / 60)}분 동안 요청이 없으면 끕니다${run.idle_seconds !== null ? ` (마지막 사용 ${Math.floor(run.idle_seconds / 60)}분 전)` : ''}. 동시에 3개까지.`
