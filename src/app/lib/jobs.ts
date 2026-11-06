@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react'
-import { createVersion, getJob, pushGit, startDevelop, startReview, startRun, type Dispositions, type Job } from '../../api'
+import { createVersion, getJob, getRunningJob, pushGit, startDevelop, startReview, startRun, type Dispositions, type Job } from '../../api'
 
 // 새 버전 만들기 작업 상태. Agent 실행은 몇 분 걸리므로 화면을 옮겨도 진행 상황이 남도록 모듈에 둔다.
-// 백엔드 서버를 다시 띄우면 서버 쪽 작업 기록이 사라지므로 여기 상태도 새로고침하면 비운다.
+// 새로고침·로그아웃하면 여기 상태는 비지만, 프로젝트를 열 때 서버에서 진행 중인 작업을 찾아 이어 본다 (resumeJob).
 
 const POLL_MS = 2000
 let jobs: Record<string, Job> = {}       // 프로젝트 ID → 마지막 작업
@@ -62,6 +62,20 @@ export async function startUpload(
   const started = await startRun(file, opts)
   track(started.job, onFinish)
   return started
+}
+
+/** 서버에서 이 프로젝트에 진행 중인 작업이 있으면 진행 창을 다시 띄워 끝날 때까지 이어 본다 (이미 보고 있으면 그대로) */
+const resuming = new Set<string>()      // 같은 프로젝트를 두 번 이어 보지 않게 (조회 중)
+const watching = (project: string) => jobs[project]?.status === 'running'
+export async function resumeJob(project: string, onFinish: (job: Job) => void): Promise<void> {
+  if (watching(project) || resuming.has(project)) return
+  resuming.add(project)
+  try {
+    const job = await getRunningJob(project).catch(() => null)
+    if (job && !watching(project)) track(job, onFinish)
+  } finally {
+    resuming.delete(project)
+  }
 }
 
 function track(job: Job, onFinish: (job: Job) => void) {

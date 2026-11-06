@@ -626,3 +626,8 @@ export async function startRun(file: File, opts: { project?: string; title?: str
 export async function getJob(id: string): Promise<Job> {
   return ((await (await request(`/jobs?id=${encodeURIComponent(id)}`)).json()) as { job: Job }).job
 }
+
+/** 프로젝트에서 진행 중인 작업 (없으면 null). 로그아웃·새로고침으로 잃은 진행 창을 다시 띄울 때 */
+export async function getRunningJob(project: string): Promise<Job | null> {
+  return ((await (await request(`/jobs/running?project=${encodeURIComponent(project)}`)).json()) as { job: Job | null }).job
+}

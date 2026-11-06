@@ -16,7 +16,7 @@ import { can, NEEDS } from '../lib/session'
 import { readStore } from '../lib/storage'
 import { specOf, stageTargets } from '../lib/versions'
 import { JobPanel } from '../components/JobPanel'
-import { startReviewJob, useJob } from '../lib/jobs'
+import { resumeJob, startReviewJob, useJob } from '../lib/jobs'
 import { directiveItems, erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
 import { isDocPage, PAGE_LABEL, type Page, type Route } from '../lib/route'
 import { StackNote } from '../components/StackChoice'
@@ -110,6 +110,8 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   const [dialog, setDialog] = useState<'spec' | 'answers' | 'redo' | 'erd' | null>(null)
   const [savedNote, setSavedNote] = useState('')
   const job = useJob(route.project)
+  // 로그아웃·새로고침으로 진행 창을 잃었어도 서버에서 돌고 있는 작업(개발·ERD 확정 등)을 다시 띄운다
+  useEffect(() => { void resumeJob(route.project, shell.onReloadProjects) }, [route.project])
   // 이 기능 명세 계보에서 도는(또는 막 끝난) 작업만 이 화면에 보여준다
   const myJob = job && specOf(versions, job.base) === targets.spec ? job : undefined
   const running = myJob?.status === 'running'
