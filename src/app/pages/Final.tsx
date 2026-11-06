@@ -24,7 +24,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
   onOpenDevSpec: (name: string) => void
   /** 진행 중인 ERD 최종 확정 작업 */
   review?: Job
-  /** 팀장: 최종 승인·수정 지시·기술 스택을 정할 수 있다 */
+  /** PM: 최종 승인·수정 지시·기술 스택을 정할 수 있다 */
   canDecide: boolean
   canFill: boolean
   /** 승인·수정 지시를 남긴 뒤 버전 기록을 다시 읽는다 */
@@ -101,9 +101,9 @@ const decisionText = (a: Approval) => a.decision === 'approve' ? '승인'
   : `수정 지시 → ${targetsOf(a).map((t) => STAGE_NAME[t]).join('·') || '단계 없음'}${a.items?.length ? ` (항목 ${a.items.length}개)` : ''}`
 
 /**
- * 팀장 결정: 최종본을 승인하거나, 고칠 내용과 함께 기능 명세·ERD 단계로 돌려보낸다 (POST /projects/approval).
+ * PM 결정: 최종본을 승인하거나, 고칠 내용과 함께 기능 명세·ERD 단계로 돌려보낸다 (POST /projects/approval).
  * 수정 지시는 두 단계를 함께 고를 수 있고, 최종본의 기능·테이블을 골라 항목마다 메모를 남긴다 (항목만 골라도 그 단계로).
- * 돌려보낸 지시는 그 단계 화면 위에 보이고, 담당 파트가 고쳐 새 버전 → 다시 최종 확정한다. 기록은 버전 기록에 쌓인다.
+ * 돌려보낸 지시는 그 단계 화면 위에 보이고, 개발자가 고쳐 새 버전 → 다시 최종 확정한다. 기록은 버전 기록에 쌓인다.
  */
 function DecisionCard({ project, version, record, design, canDecide, onDecided }: {
   project: string; version: string; record: VersionRecord; design: Design; canDecide: boolean; onDecided: () => void
@@ -145,17 +145,17 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided }
   })
   return (
     <Card aria-labelledby="final-decision" className={cx(approved && '!border-ok/50 !bg-ok-soft')}>
-      <CardHeader eyebrow="Decision" title={approved ? '최종 승인된 산출물' : '팀장 결정'} titleId="final-decision"
+      <CardHeader eyebrow="Decision" title={approved ? '최종 승인된 산출물' : 'PM 결정'} titleId="final-decision"
         actions={last ? <Badge tone={last.decision === 'approve' ? 'ok' : 'warn'}>{last.decision === 'approve' ? '최종 승인됨' : decisionText(last)}</Badge>
           : <Badge tone="neutral">결정 전</Badge>}>
         <p className="mt-1 text-small text-fg-3">
           {approved ? `${last.by.name}님이 ${formatDate(last.at)}에 승인했습니다.`
             : last ? `${last.by.name} · ${formatDate(last.at)}${last.comment ? ` — ${last.comment}` : ''}`
-            : '팀장이 이 최종본을 승인하거나, 고칠 내용을 적어 기능 명세·ERD 단계로 돌려보냅니다.'}
+            : 'PM이 이 최종본을 승인하거나, 고칠 내용을 적어 기능 명세·ERD 단계로 돌려보냅니다.'}
         </p>
       </CardHeader>
       <div className="space-y-3 px-5 pb-5">
-        {!canDecide && <p className="text-small text-fg-3">최종 승인·수정 지시는 팀장만 할 수 있습니다.</p>}
+        {!canDecide && <p className="text-small text-fg-3">최종 승인·수정 지시는 PM만 할 수 있습니다.</p>}
         {approved && (
           <p className="flex items-center gap-1.5 text-label font-semibold text-ok">
             <SealCheck size={18} weight="fill" aria-hidden="true" />승인 완료
@@ -181,8 +181,8 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided }
           <div className="space-y-3 rounded-md border border-warn/40 bg-warn-soft px-3 py-3">
             <fieldset className="flex flex-wrap gap-4 text-label">
               <legend className="mb-1 text-small font-medium text-fg">돌려보낼 단계 (둘 다 고를 수 있음)</legend>
-              <Checkbox checked={stages.spec} onChange={(v) => setStages((s) => ({ ...s, spec: v }))} label="기능 명세 (기획 파트)" />
-              <Checkbox checked={stages.erd} onChange={(v) => setStages((s) => ({ ...s, erd: v }))} label="ERD (데이터 파트)" />
+              <Checkbox checked={stages.spec} onChange={(v) => setStages((s) => ({ ...s, spec: v }))} label="기능 명세" />
+              <Checkbox checked={stages.erd} onChange={(v) => setStages((s) => ({ ...s, erd: v }))} label="ERD" />
             </fieldset>
             <div className="grid gap-3 lg:grid-cols-2">
               <ItemPicker title="고칠 기능" stage="spec" options={design.functions.map((f) => ({ id: f.function_id, label: f.name }))}
@@ -233,7 +233,7 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided }
   )
 }
 
-/** 지난 수정 지시의 처리 결과: 팀장이 이 새 최종본을 승인하기 전에 무엇이 어떻게 반영됐는지 본다 */
+/** 지난 수정 지시의 처리 결과: PM이 이 새 최종본을 승인하기 전에 무엇이 어떻게 반영됐는지 본다 */
 function PreviousDirective({ record }: { record: VersionRecord }) {
   const a = record.approval!
   const resolutions = (a as Approval & { resolutions?: Record<string, { choice: string; note: string; by: { name: string } }> }).resolutions ?? {}
@@ -292,7 +292,7 @@ function ItemPicker({ title, stage, options, items, onToggle }: {
   )
 }
 
-/** 팀장 최종 승인 표시 (최종 확정보다 한 단계 위: 개발에 넘겨도 되는 산출물) */
+/** PM 최종 승인 표시 (최종 확정보다 한 단계 위: 개발에 넘겨도 되는 산출물) */
 export function ApprovedBadge({ at, by }: { at: string; by: string }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-md bg-ok px-3 py-1.5 text-label font-semibold text-on-primary">

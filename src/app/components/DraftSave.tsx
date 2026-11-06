@@ -31,7 +31,7 @@ export function useDraftSave(kind: Kind, draft: Draft) {
   const what = kind === 'spec' ? '기능 편집·질문 답·확인 처리' : '테이블 편집·확인 처리'
   const button = (
     <Button size="sm" icon={<FloppyDisk />} disabled={draft.readOnly} onClick={save}
-      title={draft.readOnly ? '이 단계를 고칠 권한이 없거나 이미 확정한 버전입니다' : `내 작업(${what})을 서버에 저장해 같은 파트 회원과 함께 봅니다. 새 버전을 만들지 않습니다`}>
+      title={draft.readOnly ? '이 단계를 고칠 권한이 없거나 이미 확정한 버전입니다' : `내 작업(${what})을 서버에 저장해 다른 담당자와 함께 봅니다. 새 버전을 만들지 않습니다`}>
       {kind === 'spec' ? '임시저장' : '저장하기'}
     </Button>
   )

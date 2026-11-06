@@ -25,7 +25,7 @@ const RUN: Record<PreviewStatus['status'], { label: string; tone: Tone }> = {
 }
 
 /**
- * 최종 개발물: 팀장이 승인한 최종본을 1 개발(코드 + 예시 데이터 화면) → 2 실행(Docker) → 3 Git 단계로 나눠 보여 준다.
+ * 최종 개발물: PM이 승인한 최종본을 1 개발(코드 + 예시 데이터 화면) → 2 실행(Docker) → 3 Git 단계로 나눠 보여 준다.
  * 단계는 주소의 마지막 칸(focus)에 둔다 — 산출물 보기 '최종 개발하기'를 시작하면 1단계로 온다.
  * 위의 '결과물 미리보기'는 1단계면 예시 데이터 화면, 2·3단계면 실행 미리보기(새 탭에서 Docker를 켜고 앱 화면)를 연다.
  */
@@ -74,7 +74,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   }, [project, developed])
 
   if (!record || record.approval?.decision !== 'approve') {
-    return <Card><ErrorNote message="팀장이 승인한 최종본이 없습니다." hint="최종 산출물에서 팀장이 승인하면 이 화면이 열립니다." /></Card>
+    return <Card><ErrorNote message="PM이 승인한 최종본이 없습니다." hint="최종 산출물에서 PM이 승인하면 이 화면이 열립니다." /></Card>
   }
   const allowed = can(user, 'develop')
   const canStop = can(user, 'preview_stop')
@@ -152,7 +152,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
               <span className="flex flex-wrap items-center gap-2">
                 <Badge tone={developing ? 'info' : 'warn'}>{developing ? '개발 중' : '개발 대기'}</Badge>
                 {!developing && <>
-                  <span className="text-fg-2">산출물 보기에서 '최종 개발하기'를 누르면 코드를 만듭니다 (개발 파트장·팀장).</span>
+                  <span className="text-fg-2">산출물 보기에서 '최종 개발하기'를 누르면 코드를 만듭니다 (개발자).</span>
                   <Button size="sm" icon={<ArrowRight />} onClick={onOpenDocs}>산출물 보기</Button>
                 </>}
               </span>
@@ -287,7 +287,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
           </Row>
           <Row label="저장소 구성">
             <span className="text-small text-fg-3">서버의 코드 폴더 하나가 git 저장소입니다. 화면(frontend)·백엔드(backend)·DB(db)·개발 스펙(spec)을 한 저장소에 같이 올립니다.
-              main은 최종 개발하기(AI 커밋, 태그 final-v최종본)와 개발 파트장의 합치기로만 바뀌고, 개발 파트는 브랜치에서 고쳐 저장하기 → 합치기 요청을 합니다.
+              main은 최종 개발하기(AI 커밋, 태그 final-v최종본)와 개발자의 합치기로만 바뀌고, 개발자는 브랜치에서 고쳐 저장하기 → 합치기 요청을 합니다.
               빌드 결과·node_modules·미리보기·생성기 기록·시연 계정은 커밋하지 않습니다. 원격에 서버에 없는 커밋이 있으면 덮어쓰지 않고 멈춥니다.</span>
           </Row>
         </dl>

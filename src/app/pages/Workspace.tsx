@@ -46,7 +46,7 @@ export function Workspace({ shell }: { shell: ShellBase }) {
           {design.state === 'loading'
             ? <Loading label={`${PAGE_LABEL[route.page]}을 불러오는 중`} lines={8} />
             : hidden
-              ? <ErrorNote message="이 프로젝트를 볼 수 없습니다." hint="담당자와 팀장만 볼 수 있습니다. 필요하면 팀장에게 담당자 추가를 요청하세요." />
+              ? <ErrorNote message="이 프로젝트를 볼 수 없습니다." hint="담당자와 PM만 볼 수 있습니다. 필요하면 PM에게 담당자 추가를 요청하세요." />
               : <ErrorNote message={`설계를 불러오지 못했습니다. (${design.message})`} hint="프로젝트·버전이 output 폴더에 있는지 확인하세요." />}
         </Card>
       </Shell>
@@ -57,13 +57,13 @@ export function Workspace({ shell }: { shell: ShellBase }) {
 }
 
 function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; route: WorkspaceRoute; design: Design; trail: string[] }) {
-  // 역할 권한: 기능 명세는 기획 파트, ERD는 데이터 파트가 고치고, 확정은 각 파트장 (팀장은 모두). 서버도 다시 검사한다
+  // 역할 권한: 기능 명세·ERD는 PM·개발자가 고치고, 기능 명세 확정은 PM, ERD 확정은 PM·개발자. 서버도 다시 검사한다
   const me = shell.user
   const perm = {
     specEdit: can(me, 'spec_edit'), specConfirm: can(me, 'spec_confirm'),
     erdEdit: can(me, 'erd_edit'), erdConfirm: can(me, 'erd_confirm'), final: can(me, 'final_decide'),
   }
-  // 팀장 수정 지시의 진행(서버가 계산). 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다 (알림은 왼쪽 사이드바)
+  // PM 수정 지시의 진행(서버가 계산). 지시 항목을 처리하거나 버전이 바뀌면 다시 읽는다 (알림은 왼쪽 사이드바)
   const allVersions = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project)?.versions ?? [] : []
   const [directives, setDirectives] = useState<Directive[]>([])
   useEffect(() => {
@@ -77,14 +77,14 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   // 기능 명세 수정 지시가 진행 중인 옛 계보의 ERD는 잠근다 (서버도 막는다): 새 기능 명세의 ERD에서 고친다
   const lockedBy = route.page === 'erd'
     ? directives.find((d) => d.targets.includes('spec') && d.spec_version === specOf(allVersions, route.version)) : undefined
-  const lockReason = lockedBy ? `팀장이 기능 명세 수정을 지시해(최종본 v${lockedBy.final}) 이 ERD는 잠겼습니다. `
+  const lockReason = lockedBy ? `PM이 기능 명세 수정을 지시해(최종본 v${lockedBy.final}) 이 ERD는 잠겼습니다. `
     + (lockedBy.erd_version ? `새 ERD v${lockedBy.erd_version}에서 작업하세요.` : '새 기능 명세가 올라오면 그 ERD에서 고칩니다.') : ''
   const canSave = route.page === 'spec' ? perm.specEdit : route.page === 'erd' ? perm.erdEdit && !lockedBy : false
   const draft = useDraft(design, route.project, route.version, canSave)
   const project = shell.projects.state === 'ready' ? shell.projects.data.find((p) => p.id === route.project) : undefined
   const versions = project?.versions ?? []
   // 오른쪽 진행 상황은 어느 화면에서든 기능 명세·ERD 둘 다 보여준다
-  // 확인 필요 항목 + 이 화면에서 처리할 팀장 지시 항목(필수)
+  // 확인 필요 항목 + 이 화면에서 처리할 PM 지시 항목(필수)
   const specItems = useMemo(() => [...specReview(design, draft.functions, draft.state), ...directiveItems(directives, 'spec', route.version)],
     [design, draft.functions, draft.state, directives, route.version])
   const erdItems = useMemo(() => [...erdReview(design, draft.entities, draft.state), ...directiveItems(directives, 'erd', route.version)],
@@ -124,17 +124,17 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     if (next) return at ?? next.created_at
     return at && myJob?.source === source && myJob.status !== 'failed' ? at : undefined
   }
-  // 팀장 수정 지시: 이 단계로 돌려보낸 지시 중 아직 새 버전으로 고치지 않은 것 (지시 뒤에 같은 단계 버전이 생기면 처리된 것)
-  // 이 화면에서 처리할 팀장 수정 지시 (기능 명세: 그 기능 명세 / ERD: 지시를 처리할 ERD 버전)
+  // PM 수정 지시: 이 단계로 돌려보낸 지시 중 아직 새 버전으로 고치지 않은 것 (지시 뒤에 같은 단계 버전이 생기면 처리된 것)
+  // 이 화면에서 처리할 PM 수정 지시 (기능 명세: 그 기능 명세 / ERD: 지시를 처리할 ERD 버전)
   const request = useMemo(() => {
     if (route.page !== 'spec' && route.page !== 'erd') return undefined
     const page = route.page
     const d = directives.find((x) => page === 'spec' ? x.targets.includes('spec') && x.spec_version === route.version && !x.spec_done
       : x.erd_version === route.version && !x.erd_waiting)
-    return d ? { version: d.final, by: d.by ?? { id: 0, name: '팀장', role: 'lead' }, at: d.at, comment: d.comment,
+    return d ? { version: d.final, by: d.by ?? { id: 0, name: 'PM', role: 'pm' }, at: d.at, comment: d.comment,
       items: d.items.filter((i) => i.stage === page) } : undefined
   }, [directives, route.page, route.version])
-  // 이 기능 명세 계보에서 팀장이 승인한 최종본 (기능 명세·ERD 화면에 알린다: 고치면 새 버전 → 다시 승인)
+  // 이 기능 명세 계보에서 PM이 승인한 최종본 (기능 명세·ERD 화면에 알린다: 고치면 새 버전 → 다시 승인)
   const approvedFinal = versions.find((v) => v.stage === 'final' && v.approval?.decision === 'approve'
     && specOf(versions, v.design_version) === targets.spec)
   const finalized = {
@@ -157,12 +157,10 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   const exportedAt = draft.finalizedAt('spec')
   const specChanged = exportedAt ? (draft.state.updatedAt ?? '') > exportedAt : !erdRecord || Boolean(draft.state.updatedAt)
   // 확정 버튼을 켜는 조건: 필수 항목을 모두 해결 + 진행 중 작업 없음 (ERD는 저장하지 않은 테이블 수정도 없어야 함)
-  // 파트장의 확정은 파트원의 '수정 완료 승인 요청'이 있어야 켜진다 (팀장은 요청 없이). 서버도 같은 규칙으로 막는다
-  const asked = Boolean(draft.request) || me.role === 'lead'
+  // 기능 명세 확정은 PM이 승인 요청 없이 한다 (개발자는 '수정 완료 승인 요청'을 보낸다). ERD는 PM·개발자가 요청 없이 바로 확정한다
   const RUNNING = '작업(새 버전 만들기)이 진행 중입니다. 끝난 뒤 누를 수 있습니다'
-  const WAITING = "파트원의 '수정 완료 승인 요청'을 기다리는 중입니다 (요청이 오면 켜집니다)"
-  const specReady = !running && perm.specConfirm && asked && (specSummary?.requiredLeft ?? 1) === 0 && specChanged
-  const erdReady = !running && !lockedBy && perm.erdConfirm && asked && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0
+  const specReady = !running && perm.specConfirm && (specSummary?.requiredLeft ?? 1) === 0 && specChanged
+  const erdReady = !running && !lockedBy && perm.erdConfirm && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0
   const openJobVersion = (v: string) =>
     shell.navigate({ ...route, version: v, focus: undefined, ...(myJob?.source === 'review' ? { page: 'final' as const } : {}) })
 
@@ -231,7 +229,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           기능 명세 다시 만들기 (새 버전)
         </Button>
       )}
-      {/* 파트원: 확정 대신 파트장에게 승인 요청 / 파트장·팀장: 요청을 받은 뒤 내보내기(확정) */}
+      {/* 개발자: 확정 대신 PM에게 승인 요청 / PM: 요청이 없어도 내보내기(확정) */}
       {!perm.specConfirm && perm.specEdit ? (
         <RequestButton draft={draft} ready={!running && (specSummary?.requiredLeft ?? 1) === 0}
           reason={running ? '작업이 끝난 뒤 요청하세요' : `필수 확인 항목 ${specSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`} />
@@ -239,7 +237,6 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
       <Button variant={specReady ? 'ok' : 'secondary'} icon={<PaperPlaneTilt />} disabled={!specReady} onClick={() => setDialog('spec')}
         title={!perm.specConfirm ? NEEDS.spec_confirm
           : running ? RUNNING
-          : !asked ? WAITING
           : (specSummary?.requiredLeft ?? 1) > 0 ? `필수 확인 항목 ${specSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`
           : !specChanged ? '마지막으로 내보낸 뒤 고친 것이 없습니다'
           : erdRecord ? `고친 기능 명세를 새 기능 명세 버전으로 남기고 그 ERD를 만듭니다 (ERD v${targets.erd}를 이어받아 바뀐 기능의 테이블만)`
@@ -255,13 +252,8 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         title={lockReason || (!perm.erdEdit ? NEEDS.erd_edit : running ? RUNNING : undefined)}>ERD 저장하고 새 버전 만들기</Button>
       {finalized.erd
         ? <Button variant="primary" icon={<ArrowRight />} onClick={() => open('final')}>최종 산출물 보기</Button>
-        : !perm.erdConfirm && perm.erdEdit
-          ? <RequestButton draft={draft} ready={!running && !lockedBy && draft.editedEntities === 0 && (erdSummary?.requiredLeft ?? 1) === 0}
-              reason={lockReason || running ? lockReason || '작업이 끝난 뒤 요청하세요'
-                : draft.editedEntities ? `저장하지 않은 테이블 수정 ${draft.editedEntities}건을 먼저 'ERD 저장하고 새 버전 만들기'로 저장하세요 (새 버전에서 요청)`
-                : `필수 확인 항목 ${erdSummary?.requiredLeft ?? ''}개를 먼저 해결하세요`} />
-          : <ConfirmErdButton ready={erdReady} left={erdSummary?.requiredLeft ?? 0} unsaved={draft.editedEntities} onConfirm={startReview}
-              denied={lockReason || (!perm.erdConfirm ? NEEDS.erd_confirm : running ? RUNNING : asked ? undefined : WAITING)} />}
+        : <ConfirmErdButton ready={erdReady} left={erdSummary?.requiredLeft ?? 0} unsaved={draft.editedEntities} onConfirm={startReview}
+            denied={lockReason || (!perm.erdConfirm ? NEEDS.erd_confirm : running ? RUNNING : undefined)} />}
     </>
   ) : null
 
@@ -290,7 +282,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           finalized={finalized}
           page={route.page}
           log={route.page === 'spec' || route.page === 'erd' ? draft.log : undefined}
-          canEditMembers={me.role === 'lead'}
+          canEditMembers={can(me, 'assign_members')}
           user={shell.user}
         />
       }
@@ -321,22 +313,22 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
           <Button size="sm" icon={<ArrowRight />} onClick={() => shell.navigate({ ...route, page: 'final', version: approvedFinal.design_version, focus: undefined })}>승인된 최종본 보기</Button>
         </p>
       )}
-      {draft.request && (route.page === 'spec' || route.page === 'erd') && (
+      {draft.request && route.page === 'spec' && (
         <div role="status" className="mb-4 flex flex-wrap items-start gap-2 rounded-lg border border-info/40 bg-info-soft px-4 py-3 text-label text-info">
           <PaperPlaneTilt size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1">
             <strong className="font-semibold">{draft.request.by.name}님이 수정 완료 승인을 요청했습니다</strong> ({formatDate(draft.request.at)})
             {draft.request.note && <span className="block text-fg">{draft.request.note}</span>}
             <span className="block text-small text-fg-3">
-              {(route.page === 'spec' ? perm.specConfirm : perm.erdConfirm)
-                ? `오른쪽 '변경 내역'과 고친 항목을 확인하고 ${route.page === 'spec' ? "'내보내기 → ERD 만들기'" : "'ERD 최종 확정하기'"}로 승인하거나, 고칠 것이 있으면 사유와 함께 반려하세요.`
-                : '파트장이 확인하고 확정(승인)하거나 반려합니다. 지금 다시 고치면 요청이 취소됩니다.'}
+              {perm.specConfirm
+                ? "오른쪽 '변경 내역'과 고친 항목을 확인하고 '내보내기 → ERD 만들기'로 승인하거나, 고칠 것이 있으면 사유와 함께 반려하세요."
+                : 'PM이 확인하고 확정(승인)하거나 반려합니다. 지금 다시 고치면 요청이 취소됩니다.'}
             </span>
           </span>
-          {(route.page === 'spec' ? perm.specConfirm : perm.erdConfirm) && <RejectButton draft={draft} disabled={running} />}
+          {perm.specConfirm && <RejectButton draft={draft} disabled={running} />}
         </div>
       )}
-      {!draft.request && draft.rejection && (route.page === 'spec' || route.page === 'erd') && (
+      {!draft.request && draft.rejection && route.page === 'spec' && (
         <p role="status" className="mb-4 flex items-start gap-2 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-label text-warn">
           <ArrowUUpLeft size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>
@@ -350,7 +342,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         <p role="note" className="mb-4 flex items-start gap-2 rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-label text-warn">
           <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>
-            <strong className="font-semibold">팀장 수정 지시</strong> (최종본 v{request.version} · {request.by.name} · {formatDate(request.at)})
+            <strong className="font-semibold">PM 수정 지시</strong> (최종본 v{request.version} · {request.by.name} · {formatDate(request.at)})
             {request.comment && <span className="block text-fg">{request.comment}</span>}
             {request.items.length > 0 && (
               <span className="mt-1 flex flex-col gap-0.5">
@@ -390,7 +382,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   )
 }
 
-/** 파트원의 '수정 완료 승인 요청': 필수 항목을 다 하면 켜지고, 메모(선택)를 붙여 파트장에게 보낸다. 요청한 뒤 다시 고치면 서버가 취소한다 */
+/** 개발자의 기능 명세 '수정 완료 승인 요청': 필수 항목을 다 하면 켜지고, 메모(선택)를 붙여 PM에게 보낸다. 요청한 뒤 다시 고치면 서버가 취소한다 */
 function RequestButton({ draft, ready, reason }: { draft: Draft; ready: boolean; reason: string }) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState('')
@@ -412,7 +404,7 @@ function RequestButton({ draft, ready, reason }: { draft: Draft; ready: boolean;
   if (open) {
     return (
       <span role="group" aria-label="승인 요청 보내기" className="flex flex-wrap items-center gap-1.5 rounded-md border border-ok/40 bg-ok-soft py-1 pr-1 pl-2">
-        <input aria-label="파트장에게 남길 메모 (선택)" placeholder="메모 (선택)" value={note} maxLength={500}
+        <input aria-label="PM에게 남길 메모 (선택)" placeholder="메모 (선택)" value={note} maxLength={500}
           onChange={(e) => setNote(e.target.value)} className="min-h-8 w-48 rounded-sm border border-control bg-card px-2 text-small" />
         <Button size="sm" variant="ok" disabled={sending} onClick={() => void send()}>{sending ? '보내는 중…' : '요청 보내기'}</Button>
         <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>취소</Button>
@@ -422,13 +414,13 @@ function RequestButton({ draft, ready, reason }: { draft: Draft; ready: boolean;
   }
   return (
     <Button variant={ready ? 'ok' : 'secondary'} icon={<PaperPlaneTilt />} disabled={!ready} onClick={() => setOpen(true)}
-      title={ready ? (draft.request ? `${draft.request.by.name}님이 이미 요청했습니다. 다시 보내면 새 요청으로 바뀝니다` : '파트장에게 이 수정을 확인하고 확정해 달라고 요청합니다') : reason}>
+      title={ready ? (draft.request ? `${draft.request.by.name}님이 이미 요청했습니다. 다시 보내면 새 요청으로 바뀝니다` : 'PM에게 이 수정을 확인하고 확정해 달라고 요청합니다') : reason}>
       {draft.request ? '승인 요청됨 · 다시 보내기' : '수정 완료 승인 요청'}
     </Button>
   )
 }
 
-/** 파트장·팀장의 '반려': 사유(필수)를 적어 파트원의 승인 요청을 돌려보낸다. 요청한 파트원에게 Slack으로도 간다 */
+/** PM의 '반려': 사유(필수)를 적어 개발자의 승인 요청을 돌려보낸다. 요청한 개발자에게 Slack으로도 간다 */
 function RejectButton({ draft, disabled }: { draft: Draft; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const [reason, setReason] = useState('')
@@ -450,7 +442,7 @@ function RejectButton({ draft, disabled }: { draft: Draft; disabled?: boolean })
   if (!open) {
     return (
       <Button size="sm" variant="secondary" icon={<ArrowUUpLeft />} disabled={disabled} onClick={() => setOpen(true)}
-        title="고칠 것이 있으면 사유와 함께 요청을 돌려보냅니다 (요청한 파트원에게 알림)">반려</Button>
+        title="고칠 것이 있으면 사유와 함께 요청을 돌려보냅니다 (요청한 개발자에게 알림)">반려</Button>
     )
   }
   return (

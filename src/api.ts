@@ -32,7 +32,7 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 
 /* ------------------------------------------------------------ 회원·권한 */
 /** 역할 권한 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
-export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'preview_stop' | 'repo_write' | 'app_accounts' | 'project_delete' | 'project_rename'
+export type Permission = 'upload' | 'spec_edit' | 'spec_confirm' | 'erd_edit' | 'erd_confirm' | 'final_decide' | 'develop' | 'preview_stop' | 'repo_write' | 'app_accounts' | 'assign_members' | 'project_delete' | 'project_rename'
 
 export interface Member {
   id: number
@@ -49,7 +49,7 @@ export interface Member {
   permissions: Permission[]
 }
 
-/** 끝나지 않은 팀장 수정 지시와 진행 (서버 services/directives.py가 계산). 기능 명세가 대상이면 기능 명세 먼저,
+/** 끝나지 않은 PM 수정 지시와 진행 (서버 services/directives.py가 계산). 기능 명세가 대상이면 기능 명세 먼저,
  * ERD 항목은 새 기능 명세의 ERD(erd_version)가 생긴 뒤 그 ERD에서 처리한다. 그동안 옛 ERD는 잠긴다 */
 export interface Directive {
   project: string
@@ -155,7 +155,7 @@ export interface PreviewStatus {
   idle_limit: number
 }
 
-/** 앱이 처음 뜰 때 만든 시연 계정 (개발 파트원·파트장·팀장만) */
+/** 앱이 처음 뜰 때 만든 시연 계정 (PM·개발자) */
 export interface PreviewAccount { loginId: string; role: string; password: string }
 
 export async function getPreviewAccounts(project: string): Promise<PreviewAccount[]> {
@@ -314,7 +314,7 @@ export async function getStackCatalog(): Promise<StackCatalog> {
   return ((await (await request('/tech-stacks')).json()) as { catalog: StackCatalog }).catalog
 }
 
-/** 예전 최종본의 빠진 개발 스펙 채우기 (업무 동작 설계 LLM 1회 → BEHAVIOR.md 등 다시 쓰기, 데이터 파트장·팀장) */
+/** 예전 최종본의 빠진 개발 스펙 채우기 (업무 동작 설계 LLM 1회 → BEHAVIOR.md 등 다시 쓰기, PM·개발자) */
 export async function fillDevSpec(project: string, version: string): Promise<{ filled: string[]; questions: number; states: number; automations: number }> {
   return ((await (await post('/projects/dev-spec/fill', { project, version })).json()) as { dev_spec: { filled: string[]; questions: number; states: number; automations: number } }).dev_spec
 }
@@ -362,7 +362,7 @@ export async function listPickMembers(): Promise<{ members: PickMember[]; slack_
 /** 프로젝트 Slack 채널과 채널에 초대된 회원 (토큰은 서버에만) */
 export interface ProjectSlack { team: string; channel_name: string; members: PickMember[] }
 
-/** 프로젝트 담당자 한 명: in_channel = Slack 채널에 들어 있음, always = 팀장 (고르지 않아도 늘 담당자) */
+/** 프로젝트 담당자 한 명: in_channel = Slack 채널에 들어 있음, always = PM (고르지 않아도 늘 담당자) */
 export interface Assignee extends PickMember { in_channel: boolean; always: boolean }
 
 /** 프로젝트 담당자(이 프로젝트를 보는 회원)와 Slack 채널 (채널이 아직 없거나 Slack이 꺼져 있으면 slack: null) */
@@ -375,7 +375,7 @@ export async function getProjectMembers(project: string): Promise<ProjectMembers
   return (await (await request(`/projects/members?${query({ project })}`)).json()) as ProjectMembers
 }
 
-/** 팀장: 프로젝트 담당자를 다시 고른다 (members = 새 담당자 전체, 팀장은 늘 포함). Slack 채널이 있으면 채널도 맞춘다 */
+/** PM: 프로젝트 담당자를 다시 고른다 (members = 새 담당자 전체, PM은 늘 포함). Slack 채널이 있으면 채널도 맞춘다 */
 export async function setProjectMembers(project: string, members: number[]): Promise<ProjectMembers & { result: MembersResult }> {
   return (await (await post('/projects/members', { project, members })).json()) as ProjectMembers & { result: MembersResult }
 }
@@ -393,7 +393,7 @@ export async function resetPassword(id: number, password: string): Promise<void>
   await post('/users/password', { id, password })
 }
 
-/* ------------------------------------------------------------ 수정 초안 공유·팀장 결정 */
+/* ------------------------------------------------------------ 수정 초안 공유·PM 결정 */
 type Who = { id: number; name: string; role: string }
 
 /** 변경 내역 한 묶음: 누가·언제·무엇을 (서버가 저장할 때 이전 초안과 비교해 남긴다). event: 승인 요청·취소·반려·확정 */
@@ -404,10 +404,10 @@ export interface DraftLogEntry {
   changes: { target: string; label: string; what: string }[]
 }
 
-/** 파트원의 수정 완료 승인 요청 (파트장의 확정은 이것이 있어야 한다) */
+/** 개발자의 기능 명세 수정 완료 승인 요청 (PM은 요청 없이도 확정한다) */
 export interface ReviewRequest { by: Who; at: string; note: string }
 
-/** 파트장·팀장의 마지막 반려 (파트원이 다시 요청하거나 확정되면 지운다) */
+/** PM의 마지막 반려 (개발자가 다시 요청하거나 확정되면 지운다) */
 export interface ReviewRejection { by: Who; at: string; reason: string; request: ReviewRequest }
 
 export interface ServerDraft<T> {
@@ -428,7 +428,7 @@ export async function requestReview(project: string, version: string, note: stri
   return (await (await post('/drafts/request', { project, version, note })).json()) as { request: ReviewRequest; log: DraftLogEntry[] }
 }
 
-/** 파트장·팀장: 파트원의 승인 요청 반려 (사유 필수, 요청한 파트원에게 Slack으로도 알린다) */
+/** PM: 개발자의 승인 요청 반려 (사유 필수, 요청한 개발자에게 Slack으로도 알린다) */
 export async function rejectReview(project: string, version: string, reason: string): Promise<{ rejection: ReviewRejection; log: DraftLogEntry[] }> {
   return (await (await post('/drafts/request/reject', { project, version, reason })).json()) as { rejection: ReviewRejection; log: DraftLogEntry[] }
 }
@@ -461,7 +461,7 @@ export async function listProjects(): Promise<{ output_dir: string; projects: Pr
   return (await request('/projects')).json()
 }
 
-/** 프로젝트 삭제 (팀장만, 되돌릴 수 없음): confirm에 프로젝트 이름을 그대로 넣어야 한다 */
+/** 프로젝트 삭제 (PM만, 되돌릴 수 없음): confirm에 프로젝트 이름을 그대로 넣어야 한다 */
 export async function deleteProject(project: string, confirm: string): Promise<{ project: string; removed: string[] }> {
   return (await request(`/projects?${query({ project, confirm })}`, { method: 'DELETE' })).json()
 }
@@ -510,7 +510,7 @@ export async function setVersionTitle(project: string, version: string, title: s
   await post('/projects/title', { project, version, title })
 }
 
-/** 팀장: 프로젝트 이름 바꾸기 (화면·Slack에 보이는 이름만, 프로젝트 ID·주소는 그대로). 비우면 처음 이름. 바뀐 이름을 돌려준다 */
+/** PM: 프로젝트 이름 바꾸기 (화면·Slack에 보이는 이름만, 프로젝트 ID·주소는 그대로). 비우면 처음 이름. 바뀐 이름을 돌려준다 */
 export async function renameProject(project: string, name: string): Promise<string> {
   return ((await (await post('/projects/name', { project, name })).json()) as { name: string }).name
 }
@@ -609,7 +609,7 @@ export interface SlackConnected {
 
 /** 원본 요구서를 올려 기능 명세 초안까지 실행한다 (확인 질문은 추천안으로 가정). 몇 분 걸리므로 작업 ID를 받고 getJob으로 확인한다.
  * model·effort는 이 프로젝트의 ERD 만들기·최종 확정까지 같이 쓴다 (비우면 백엔드 .env). DDL 검증은 항상 한다.
- * members(회원 ID) = 새 프로젝트의 담당자 (올린 사람·팀장은 늘 포함, 담당자만 이 프로젝트를 봄).
+ * members(회원 ID) = 새 프로젝트의 담당자 (올린 사람·PM은 늘 포함, 담당자만 이 프로젝트를 봄).
  * Slack이 켜져 있으면(백엔드 .env) 프로젝트 비공개 채널을 만들고 담당자를 초대한다 (Slack이 실패해도 분석은 시작). */
 export async function startRun(file: File, opts: { project?: string; title?: string; model?: string; effort?: string; members?: number[] }): Promise<{ job: Job; slack: SlackConnected | null }> {
   const form = new FormData()

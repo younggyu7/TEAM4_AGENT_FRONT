@@ -12,18 +12,19 @@ export const can = (user: User | null | undefined, permission: Permission) => Bo
 
 /** 권한이 없을 때 버튼에 보여 줄 이유 */
 export const NEEDS: Record<Permission, string> = {
-  upload: '새 문서 업로드는 기획 파트원·기획 파트장·팀장만 할 수 있습니다',
-  spec_edit: '기능 명세 수정은 기획 파트원·기획 파트장·팀장만 할 수 있습니다',
-  spec_confirm: '기능 명세 확정(내보내기)은 기획 파트장·팀장만 할 수 있습니다',
-  erd_edit: 'ERD 수정은 데이터 파트원·데이터 파트장·팀장만 할 수 있습니다',
-  erd_confirm: 'ERD 최종 확정은 데이터 파트장·팀장만 할 수 있습니다',
-  final_decide: '최종 승인·수정 지시와 기술 스택은 팀장만 정할 수 있습니다',
-  develop: '최종 개발하기·합치기·원격 올리기는 개발 파트장만 할 수 있습니다',
-  preview_stop: '실행 미리보기 끄기는 팀장·개발 파트장만 할 수 있습니다',
-  repo_write: '브랜치·코드 고치기·저장하기·합치기 요청은 개발 파트원·개발 파트장만 할 수 있습니다',
-  app_accounts: '앱 시연 계정은 개발 파트원·개발 파트장·팀장만 볼 수 있습니다',
-  project_delete: '프로젝트 삭제는 팀장만 할 수 있습니다',
-  project_rename: '프로젝트 이름은 팀장만 바꿀 수 있습니다',
+  upload: '새 문서 업로드는 PM·개발자만 할 수 있습니다',
+  spec_edit: '기능 명세 수정은 PM·개발자만 할 수 있습니다',
+  spec_confirm: "기능 명세 확정(내보내기)은 PM만 할 수 있습니다. 개발자는 '수정 완료 승인 요청'을 보내 주세요",
+  erd_edit: 'ERD 수정은 PM·개발자만 할 수 있습니다',
+  erd_confirm: 'ERD 최종 확정은 PM·개발자만 할 수 있습니다',
+  final_decide: '최종 승인·수정 지시와 기술 스택은 PM만 정할 수 있습니다',
+  develop: '최종 개발하기·합치기·원격 올리기는 개발자만 할 수 있습니다',
+  preview_stop: '실행 미리보기 끄기는 PM·개발자만 할 수 있습니다',
+  repo_write: '브랜치·코드 고치기·저장하기·합치기 요청은 개발자만 할 수 있습니다',
+  app_accounts: '앱 시연 계정은 PM·개발자만 볼 수 있습니다',
+  assign_members: '담당자는 PM만 바꿀 수 있습니다',
+  project_delete: '프로젝트 삭제는 PM만 할 수 있습니다',
+  project_rename: '프로젝트 이름은 PM만 바꿀 수 있습니다',
 }
 
 export function useSession() {

@@ -9,7 +9,7 @@ import { can, NEEDS, type User } from '../lib/session'
 import { Badge, Button, cx, IconButton, Label, Loading, TextInput, fmt } from './ui'
 
 /**
- * 산출물 보기 제목 옆 (팀장이 승인한 최종본): '최종 개발하기'. 개발 파트장·팀장만 누른다.
+ * 산출물 보기 제목 옆 (PM이 승인한 최종본): '최종 개발하기'. 개발자만 누른다.
  * 먼저 예상(화면·파일 수, AI 업무 로직 예상 비용)을 보여 주고 확인받는다. 기본은 LLM 없음.
  * 시작하면 최종 개발물 화면 1단계로 옮긴다 (onStarted). 원격 올리기는 최종 개발물 화면 3단계와 오른쪽 '코드 저장소'에 있다.
  */

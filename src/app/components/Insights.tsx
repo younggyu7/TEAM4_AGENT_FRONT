@@ -22,7 +22,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
   user?: User
   project?: Project
   version: string
-  /** 팀장: 프로젝트 담당자(이 프로젝트를 보는 회원, Slack 채널 초대)를 바꿀 수 있다 (백엔드도 팀장만 허용) */
+  /** PM: 프로젝트 담당자(이 프로젝트를 보는 회원, Slack 채널 초대)를 바꿀 수 있다 (백엔드도 PM만 허용) */
   canEditMembers?: boolean
   /** 단계마다 그 단계 버전(기능 명세 v1, ERD v1.2)의 확인 항목 요약. null이면 읽는 중 */
   reviews: Record<EditPage, Summary | null>
@@ -59,7 +59,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
   )
 }
 
-/** 변경 내역: 파트원·파트장이 이 버전 초안에서 무엇을 고쳤는지 (최신이 위). 승인 요청·취소·확정도 같이 */
+/** 변경 내역: PM·개발자가 이 버전 초안에서 무엇을 고쳤는지 (최신이 위). 승인 요청·취소·확정도 같이 */
 function ChangeLogCard({ log }: { log: DraftLogEntry[] }) {
   const shown = [...log].reverse().slice(0, 30)
   return (

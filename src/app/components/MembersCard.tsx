@@ -4,9 +4,9 @@ import { getProjectMembers, listPickMembers, setProjectMembers, type MembersResu
 import { Badge, Button, Card, CardHeader, Checkbox } from './ui'
 
 /**
- * 오른쪽 '담당자': 이 프로젝트를 보는 회원(담당자와 팀장)과 Slack 채널.
+ * 오른쪽 '담당자': 이 프로젝트를 보는 회원(담당자와 PM)과 Slack 채널.
  * 담당자가 아닌 회원에게는 이 프로젝트가 목록·알림 어디에도 보이지 않는다 (백엔드 services/project_access).
- * 팀장만 '바꾸기'로 담당자를 더하거나 뺀다: 뺀 회원은 바로 못 보고, Slack 채널이 있으면 더한 회원은 초대·뺀 회원은 내보낸다.
+ * PM만 '바꾸기'로 담당자를 더하거나 뺀다: 뺀 회원은 바로 못 보고, Slack 채널이 있으면 더한 회원은 초대·뺀 회원은 내보낸다.
  */
 export function MembersCard({ project, canEdit }: { project: string; canEdit: boolean }) {
   const [info, setInfo] = useState<ProjectMembers | null>(null)
@@ -60,7 +60,7 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
           ? <Button size="sm" variant="ghost" icon={<PencilSimple />} onClick={startEdit} title="담당자를 더하거나 뺍니다 (담당자만 이 프로젝트를 봄)">바꾸기</Button>
           : undefined} />
       <div className="space-y-3 px-5 pb-5 text-small">
-        <p className="text-fg-3">담당자와 팀장만 이 프로젝트를 보고 알림을 받습니다.</p>
+        <p className="text-fg-3">담당자와 PM만 이 프로젝트를 보고 알림을 받습니다.</p>
         {!editing ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="담당자">
             {info.members.map((m) => (
@@ -74,10 +74,10 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
             <legend className="mb-1.5 font-medium">담당자 <span className="font-normal text-fg-3">({chosen.length}명)</span></legend>
             <div className="flex flex-col gap-0.5">
               {people.map((m) => (
-                <Checkbox key={m.id} checked={always.has(m.id) || m.role === 'lead' || chosen.includes(m.id)}
-                  disabled={busy || always.has(m.id) || m.role === 'lead'}
+                <Checkbox key={m.id} checked={always.has(m.id) || m.role === 'pm' || chosen.includes(m.id)}
+                  disabled={busy || always.has(m.id) || m.role === 'pm'}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-fg-3">{m.role_label}{m.role === 'lead' ? ' · 필수' : m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
+                  label={<span>{m.name} <span className="text-fg-3">{m.role_label}{m.role === 'pm' ? ' · 필수' : m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
               ))}
             </div>
             <p className="mt-1.5 text-micro text-fg-3">

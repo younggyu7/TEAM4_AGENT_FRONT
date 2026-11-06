@@ -5,7 +5,7 @@ import type { Project } from '../../types'
 import { Button, IconButton, TextInput } from './ui'
 
 /**
- * 프로젝트 삭제 확인 창 (왼쪽 프로젝트 목록 오른쪽 클릭 → '프로젝트 삭제', 팀장만).
+ * 프로젝트 삭제 확인 창 (왼쪽 프로젝트 목록 오른쪽 클릭 → '프로젝트 삭제', PM만).
  * 서버의 버전·산출물·초안·알림, 최종 개발물 코드 폴더(git 포함), 실행 미리보기 DB까지 지운다. 되돌릴 수 없어서 이름을 그대로 적어야 지운다.
  */
 export function ProjectDeleteDialog({ project, onClose, onDeleted }: {
