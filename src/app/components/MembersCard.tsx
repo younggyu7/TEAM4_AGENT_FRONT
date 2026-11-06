@@ -1,10 +1,11 @@
 import { PencilSimple, SlackLogo } from '@phosphor-icons/react'
 import { useEffect, useState } from 'react'
 import { getProjectMembers, listPickMembers, setProjectMembers, type MembersResult, type PickMember, type ProjectMembers } from '../../api'
+import { hasPm, NEED_PM } from '../lib/session'
 import { Badge, Button, Card, CardHeader, Checkbox } from './ui'
 
 /**
- * 오른쪽 '담당자': 이 프로젝트를 보는 회원(담당자와 PM)과 Slack 채널.
+ * 오른쪽 '담당자': 이 프로젝트를 보는 회원(고른 담당자, PM 최소 한 명)과 Slack 채널. PM을 고른 적이 없는 프로젝트는 PM 모두가 담당자.
  * 담당자가 아닌 회원에게는 이 프로젝트가 목록·알림 어디에도 보이지 않는다 (백엔드 services/project_access).
  * PM만 '바꾸기'로 담당자를 더하거나 뺀다: 뺀 회원은 바로 못 보고, Slack 채널이 있으면 더한 회원은 초대·뺀 회원은 내보낸다.
  */
@@ -26,7 +27,6 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
 
   if (!info) return error ? <Card aria-labelledby="members-card"><p role="alert" className="p-5 text-small text-danger">{error}</p></Card> : null
 
-  const always = new Set(info.members.filter((m) => m.always).map((m) => m.id))
   const startEdit = () => {
     setError('')
     setDone(null)
@@ -49,6 +49,7 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
     }
   }
   const slack = info.slack
+  const noPm = !hasPm(people.filter((m) => chosen.includes(m.id)))
   // 담당자 배지 옆 Slack 상태: 채널이 있을 때만 (없으면 아래 한 줄로 이유를 보인다)
   const slackNote = (m: ProjectMembers['members'][number]) =>
     !slack || m.in_channel ? '' : m.has_slack ? ' · Slack 채널에 없음' : ' · Slack ID 없음'
@@ -60,12 +61,12 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
           ? <Button size="sm" variant="ghost" icon={<PencilSimple />} onClick={startEdit} title="담당자를 더하거나 뺍니다 (담당자만 이 프로젝트를 봄)">바꾸기</Button>
           : undefined} />
       <div className="space-y-3 px-5 pb-5 text-small">
-        <p className="text-fg-3">담당자와 PM만 이 프로젝트를 보고 알림을 받습니다.</p>
+        <p className="text-fg-3">담당자만 이 프로젝트를 보고 알림을 받습니다 (PM 최소 한 명).</p>
         {!editing ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="담당자">
             {info.members.map((m) => (
               <li key={m.id}>
-                <Badge tone={slackNote(m) ? 'warn' : 'neutral'}>{m.name} · {m.role_label}{m.always ? ' · 필수' : ''}{slackNote(m)}</Badge>
+                <Badge tone={slackNote(m) ? 'warn' : 'neutral'}>{m.name} · {m.role_label}{slackNote(m)}</Badge>
               </li>
             ))}
           </ul>
@@ -74,17 +75,17 @@ export function MembersCard({ project, canEdit }: { project: string; canEdit: bo
             <legend className="mb-1.5 font-medium">담당자 <span className="font-normal text-fg-3">({chosen.length}명)</span></legend>
             <div className="flex flex-col gap-0.5">
               {people.map((m) => (
-                <Checkbox key={m.id} checked={always.has(m.id) || m.role === 'pm' || chosen.includes(m.id)}
-                  disabled={busy || always.has(m.id) || m.role === 'pm'}
+                <Checkbox key={m.id} checked={chosen.includes(m.id)} disabled={busy}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-fg-3">{m.role_label}{m.role === 'pm' ? ' · 필수' : m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
+                  label={<span>{m.name} <span className="text-fg-3">{m.role_label}{m.has_slack ? '' : ' · Slack ID 없음'}</span></span>} />
               ))}
             </div>
             <p className="mt-1.5 text-micro text-fg-3">
               뺀 회원은 이 프로젝트를 더는 볼 수 없습니다.{slack ? ' 더한 회원은 Slack 채널에 초대하고, 뺀 회원은 채널에서 내보냅니다.' : ''}
             </p>
             <div className="mt-2 flex gap-1.5">
-              <Button size="sm" variant="primary" disabled={busy} onClick={() => void save()}>{busy ? '저장 중…' : '저장'}</Button>
+              <Button size="sm" variant="primary" disabled={busy || noPm} onClick={() => void save()}
+                title={noPm ? (people.length ? `${NEED_PM} (PM을 골라 주세요)` : '회원 목록을 불러오는 중입니다') : undefined}>{busy ? '저장 중…' : '저장'}</Button>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => setEditing(false)}>취소</Button>
             </div>
           </fieldset>

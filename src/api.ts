@@ -365,8 +365,8 @@ export async function listPickMembers(): Promise<{ members: PickMember[]; slack_
 /** 프로젝트 Slack 채널과 채널에 초대된 회원 (토큰은 서버에만) */
 export interface ProjectSlack { team: string; channel_name: string; members: PickMember[] }
 
-/** 프로젝트 담당자 한 명: in_channel = Slack 채널에 들어 있음, always = PM (고르지 않아도 늘 담당자) */
-export interface Assignee extends PickMember { in_channel: boolean; always: boolean }
+/** 프로젝트 담당자 한 명: in_channel = Slack 채널에 들어 있음 (PM을 고른 적이 없는 프로젝트는 PM 모두가 담당자) */
+export interface Assignee extends PickMember { in_channel: boolean }
 
 /** 프로젝트 담당자(이 프로젝트를 보는 회원)와 Slack 채널 (채널이 아직 없거나 Slack이 꺼져 있으면 slack: null) */
 export interface ProjectMembers { members: Assignee[]; slack: ProjectSlack | null; slack_enabled: boolean }

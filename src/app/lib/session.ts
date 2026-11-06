@@ -7,6 +7,10 @@ import { removeStore } from './storage'
 
 export type User = Member
 
+/** 담당자에는 PM이 최소 한 명 있어야 한다 (백엔드 services/project_access.NEED_PM과 같은 규칙, 서버도 400으로 막는다) */
+export const NEED_PM = 'PM 최소 한 명은 필요합니다'
+export const hasPm = (members: { role: string }[]) => members.some((m) => m.role === 'pm')
+
 /** 이 회원이 그 일을 할 수 있는지 (백엔드 app/core/auth.py PERMISSIONS와 같은 이름) */
 export const can = (user: User | null | undefined, permission: Permission) => Boolean(user?.permissions.includes(permission))
 

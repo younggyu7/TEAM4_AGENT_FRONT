@@ -11,7 +11,7 @@ import { JobPanel } from '../components/JobPanel'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextInput, type Tone } from '../components/ui'
 import { draftSummaries } from '../lib/draft'
 import { startUpload, useJob } from '../lib/jobs'
-import { can, NEEDS } from '../lib/session'
+import { can, hasPm, NEED_PM, NEEDS } from '../lib/session'
 
 export function Home({ shell }: { shell: ShellBase }) {
   const { user, projects, navigate, onReloadProjects: onReload } = shell
@@ -178,7 +178,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
     }).catch(() => setLlm(null))
   }, [])
   const picked = llm?.models.find((m) => m.id === model)
-  // 담당자: 담당자(고른 회원 + 올리는 사람)와 PM만 이 프로젝트를 본다. 나중에 프로젝트 화면에서 PM이 바꾼다.
+  // 담당자: 고른 회원 + 올리는 사람만 이 프로젝트를 본다 (PM도 고른 PM만, PM 최소 한 명). 나중에 프로젝트 화면에서 PM이 바꾼다.
   // Slack(백엔드 .env 워크스페이스 토큰이 있을 때): 업로드하면 프로젝트 비공개 채널을 자동으로 만들고 담당자를 초대한다
   const [slackOn, setSlackOn] = useState(false)
   const [people, setPeople] = useState<PickMember[]>([])
@@ -190,8 +190,10 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
       setPeople(r.members)
     }).catch(() => setPeople([]))
   }, [meId])
-  const always = (m: PickMember) => m.id === meId || m.role === 'pm'   // 올리는 사람·PM은 늘 담당자
+  const always = (m: PickMember) => m.id === meId   // 올리는 사람은 늘 담당자
   const assignees = people.filter((m) => always(m) || chosen.includes(m.id))
+  // 회원 목록을 못 읽었으면(고르는 칸이 안 보임) 막지 않는다: 서버가 다시 검사해 이유를 알려 준다
+  const noPm = people.length > 0 && !hasPm(assignees)
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -293,7 +295,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
         {people.length > 0 && (
           <fieldset className="rounded-lg border border-line p-4">
             <legend className="px-1 text-label font-medium">
-              담당자 <span className="font-normal text-fg-3">({assignees.length}명 · 담당자와 PM만 이 프로젝트를 봅니다{slackOn
+              담당자 <span className="font-normal text-fg-3">({assignees.length}명 · 담당자만 이 프로젝트를 봅니다 · PM 최소 한 명{slackOn
                 ? <> · Slack 비공개 채널 <span className="font-mono">#{slackChannelName(project || file?.name.replace(/\.[^.]+$/, '') || '')}</span>을 자동으로 만들어 초대</>
                 : ''})</span>
             </legend>
@@ -301,7 +303,7 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
               {people.map((m) => (
                 <Checkbox key={m.id} checked={always(m) || chosen.includes(m.id)} disabled={running || always(m)}
                   onChange={(v) => setChosen((list) => v ? [...list, m.id] : list.filter((x) => x !== m.id))}
-                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나 · 필수' : m.role === 'pm' ? ' · 필수' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
+                  label={<span>{m.name} <span className="text-small text-fg-3">{m.role_label}{m.id === meId ? ' · 나 · 필수' : ''}{slackOn && !m.has_slack ? ' · Slack ID 없음' : ''}</span></span>} />
               ))}
             </div>
             <p className="mt-1 text-micro text-fg-3">
@@ -312,8 +314,9 @@ function NewRunCard({ onFinished, onOpen, canUpload, meId }: { onFinished: () =>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-small text-fg-3">만든 DDL은 ERD를 만들 때마다 검증용 DB에 적용해 봅니다 (실패하면 자동으로 고침).</p>
-          <Button variant="primary" icon={<UploadSimple />} disabled={!file || running || !canUpload} onClick={submit}
-            title={!canUpload ? NEEDS.upload : !file ? '먼저 문서(PDF·DOCX·HWPX)를 고르세요' : running ? '지금 분석이 끝난 뒤 올릴 수 있습니다' : undefined}>
+          <Button variant="primary" icon={<UploadSimple />} disabled={!file || running || !canUpload || noPm} onClick={submit}
+            title={!canUpload ? NEEDS.upload : !file ? '먼저 문서(PDF·DOCX·HWPX)를 고르세요' : running ? '지금 분석이 끝난 뒤 올릴 수 있습니다'
+              : noPm ? `${NEED_PM} (담당자에서 PM을 골라 주세요)` : undefined}>
             {submitting ? '올리는 중' : job?.status === 'running' ? '분석 중' : '올리고 분석 시작'}
           </Button>
         </div>
