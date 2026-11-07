@@ -14,11 +14,11 @@ export function setRepoBranch(project: string, branch: string) {
   window.dispatchEvent(new CustomEvent(BRANCH_CHANGED, { detail: { project, branch } }))
 }
 
-/** [지금 브랜치, 바꾸기]. 기본 main */
+/** [지금 브랜치, 바꾸기]. 기본 dev (코드 폴더의 통합 브랜치) */
 export function useRepoBranch(project: string): [string, (branch: string) => void] {
-  const [branch, setBranch] = useState(() => readStore<string>(`repo-branch.${project}`) || 'main')
+  const [branch, setBranch] = useState(() => readStore<string>(`repo-branch.${project}`) || 'dev')
   useEffect(() => {
-    setBranch(readStore<string>(`repo-branch.${project}`) || 'main')
+    setBranch(readStore<string>(`repo-branch.${project}`) || 'dev')
     const on = (e: Event) => { const d = (e as CustomEvent<{ project: string; branch: string }>).detail; if (d.project === project) setBranch(d.branch) }
     window.addEventListener(BRANCH_CHANGED, on)
     return () => window.removeEventListener(BRANCH_CHANGED, on)

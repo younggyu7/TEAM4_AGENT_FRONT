@@ -6,7 +6,7 @@ import { NEEDS } from '../lib/session'
 import { Modal } from './DevelopActions'
 import { Badge, Button, Checkbox, cx, ErrorNote, Loading, TextArea } from './ui'
 
-export const MAIN_READONLY = 'main은 직접 고칠 수 없습니다 — 브랜치를 만들어 고치세요'
+export const MAIN_READONLY = 'dev·main은 직접 고칠 수 없습니다 — 브랜치를 만들어 고치세요'
 const CHANGE = { M: '변경', A: '새 파일', D: '지움' } as const
 
 /** 다른 곳(오른쪽 '업무 로직 현황')에서 코드 보기로 파일을 연다: detail = 경로 */
@@ -71,7 +71,7 @@ export function CodeBrowser({ project, branch, canEdit, refreshKey, openPath }: 
   const [closed, setClosed] = useState<Set<string>>(new Set(['frontend/src/generated']))
   const [committing, setCommitting] = useState(false)
   const repoVersion = useRepoVersion()
-  const onMain = branch === 'main'
+  const onMain = branch === 'dev' || branch === 'main' || branch === 'gen'
   const editable = canEdit && !onMain
 
   const loadTree = () => getAppFiles(project, branch).then((t) => { setTree(t); setError('') }).catch((e) => setError((e as Error).message))
@@ -185,7 +185,7 @@ export function CodeBrowser({ project, branch, canEdit, refreshKey, openPath }: 
           <Checkbox checked={onlyEmpty} onChange={setOnlyEmpty} label="빈 로직 있는 파일만" />
         </span>
       </div>
-      {onMain && <p className="rounded-md bg-sunken px-3 py-1.5 text-small text-fg-3">{MAIN_READONLY}. main은 최종 개발하기와 개발자의 합치기로만 바뀝니다.</p>}
+      {onMain && <p className="rounded-md bg-sunken px-3 py-1.5 text-small text-fg-3">{MAIN_READONLY}. dev는 최종 개발하기·합치기·화면 구성 저장으로, main은 릴리스로만 바뀝니다.</p>}
       <div className="grid min-h-[480px] overflow-hidden rounded-md border border-line lg:grid-cols-[280px_1fr]">
         <nav aria-label="파일 구성" className="max-h-[70vh] overflow-auto border-b border-line bg-card/60 py-2 lg:border-b-0 lg:border-r">
           <ul>{root.children.map((c) => renderNode(c, 0))}</ul>
@@ -209,7 +209,7 @@ export function CodeBrowser({ project, branch, canEdit, refreshKey, openPath }: 
           </div>
           {note && <p role="status" className="border-b border-line bg-sunken px-3 py-1.5 text-small text-fg-2">{note}</p>}
           {file && file.generated && !file.edited && draft !== null && (
-            <p className="border-b border-line bg-info-soft px-3 py-1.5 text-small text-info">고치면 '사람이 고침'이 되고, main에 합친 뒤에는 다시 개발해도 이 파일은 바뀌지 않습니다 (스펙이 바뀌어도).</p>
+            <p className="border-b border-line bg-info-soft px-3 py-1.5 text-small text-info">고치면 '사람이 고침'이 되고, dev에 합친 뒤에는 다시 개발해도 이 파일은 바뀌지 않습니다 (스펙이 바뀌어도).</p>
           )}
           <div className="min-h-0 flex-1 overflow-auto bg-card">
             {fileError ? <div className="p-3"><ErrorNote message={fileError} /></div>

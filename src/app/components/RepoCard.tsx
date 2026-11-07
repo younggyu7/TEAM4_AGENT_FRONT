@@ -1,6 +1,7 @@
 import { ArrowDown, CloudArrowUp, GitBranch, GitMerge, GitPullRequest, Plus, Trash } from '@phosphor-icons/react'
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import {
+  releaseRepo,
   checkRemote, createBranch, deleteBranch, getBranchDiff, getGitSettings, getRepo, getRepoCommit, getRepoLog, mergeRequest, rejectRequest,
   requestMerge, updateBranch, ApiError, type CommitDetail, type DiffFile, type GitSettings, type MergeRequest, type RepoCommit, type RepoOverview,
 } from '../../api'
@@ -69,7 +70,7 @@ const errorText = (e: unknown) => {
 
 /**
  * 최종 개발물 오른쪽 '코드 저장소' (GitKraken처럼): 모든 브랜치의 커밋을 칸 그래프로 보여 준다.
- * 보라 점 = AI(최종 개발하기, req-agent) 커밋, 초록 점 = 사람 커밋. main은 개발자의 합치기와 최종 개발하기로만 바뀐다.
+ * 보라 점 = AI(최종 개발하기, req-agent) 커밋, 초록 점 = 사람 커밋. dev는 개발자의 합치기·최종 개발하기·화면 구성 저장으로, main은 릴리스로만 바뀐다.
  * 개발자: 새 브랜치 · 합치기 요청 · 메인 가져오기 · 합치기 요청 차이 보기·합치기·반려 · 원격 올리기 (PM은 보기만).
  */
 export function RepoCard({ project, version, user }: { project: string; version: string; user: User }) {
@@ -91,8 +92,8 @@ export function RepoCard({ project, version, user }: { project: string; version:
       .catch((e) => setError((e as Error).message))
   }, [project])
   useEffect(() => { load(); const t = window.setInterval(load, 30_000); return () => window.clearInterval(t) }, [load, changed])
-  // 지운 브랜치를 보고 있었으면 main으로
-  useEffect(() => { if (repo && !repo.branches.some((b) => b.name === branch)) setBranch('main') }, [repo, branch, setBranch])
+  // 지운 브랜치를 보고 있었으면 dev로
+  useEffect(() => { if (repo && !repo.branches.some((b) => b.name === branch)) setBranch('dev') }, [repo, branch, setBranch])
 
   const graph = useMemo(() => (commits ? layout(commits) : null), [commits])
   if (error) return <Card aria-labelledby="repo-card"><CardHeader eyebrow="Repository" title="코드 저장소" titleId="repo-card" /><ErrorNote message={error} onRetry={load} /></Card>
@@ -115,7 +116,7 @@ export function RepoCard({ project, version, user }: { project: string; version:
       load()
     }
   }
-  const headSha = repo.branches.find((b) => b.name === 'main')?.head
+  const headSha = repo.branches.find((b) => b.name === 'dev')?.head
 
   return (
     <Card aria-labelledby="repo-card">
@@ -131,9 +132,9 @@ export function RepoCard({ project, version, user }: { project: string; version:
         {current && (
           <p className="flex flex-wrap gap-1.5">
             {current.protected
-              ? <Badge tone="neutral">main · 직접 고치지 않음</Badge>
+              ? <Badge tone="neutral">{current.name === 'main' ? 'main · 고객 납품 (릴리스로만)' : current.name === 'gen' ? 'gen · AI 생성 결과 (최종 개발하기만)' : 'dev · 직접 고치지 않음'}</Badge>
               : <>
-                  <Badge tone={current.ahead ? 'info' : 'neutral'}>main보다 {current.ahead}개 앞섬</Badge>
+                  <Badge tone={current.ahead ? 'info' : 'neutral'}>dev보다 {current.ahead}개 앞섬</Badge>
                   {current.behind > 0 && <Badge tone="warn">{current.behind}개 뒤처짐</Badge>}
                 </>}
             {current.changes > 0 && <Badge tone="info">저장 안 한 변경 {current.changes}</Badge>}
@@ -141,20 +142,20 @@ export function RepoCard({ project, version, user }: { project: string; version:
           </p>
         )}
         <div className="flex flex-wrap gap-1.5">
-          <Button size="sm" variant="secondary" icon={<Plus />} disabled={!write || busy} title={write ? 'main에서 새 브랜치(작업 폴더)를 만듭니다' : NEEDS.repo_write}
+          <Button size="sm" variant="secondary" icon={<Plus />} disabled={!write || busy} title={write ? 'dev에서 새 브랜치(작업 폴더)를 만듭니다' : NEEDS.repo_write}
             onClick={() => setDialog('branch')}>새 브랜치</Button>
           {current && !current.protected && <>
             <Button size="sm" variant="secondary" icon={<GitPullRequest />}
               disabled={!write || busy || !current.ahead || current.changes > 0 || Boolean(current.request)}
               title={!write ? NEEDS.repo_write : current.request ? '이미 합치기 요청 중입니다' : current.changes > 0 ? '먼저 코드 보기에서 저장하기를 하세요'
-                : !current.ahead ? 'main에 없는 커밋이 없습니다' : '개발자에게 main에 합쳐 달라고 요청합니다'}
+                : !current.ahead ? 'dev에 없는 커밋이 없습니다' : '다른 개발자에게 dev에 합쳐 달라고 요청합니다'}
               onClick={() => setDialog('request')}>합치기 요청</Button>
             <Button size="sm" variant="ghost" icon={<ArrowDown />} disabled={!write || busy || !current.behind || current.changes > 0}
-              title={!write ? NEEDS.repo_write : current.changes > 0 ? '먼저 저장하기를 하세요' : current.behind ? 'main의 새 커밋을 이 브랜치에 합칩니다' : 'main의 최신 내용이 이미 있습니다'}
+              title={!write ? NEEDS.repo_write : current.changes > 0 ? '먼저 저장하기를 하세요' : current.behind ? 'dev의 새 커밋을 이 브랜치에 합칩니다' : 'dev의 최신 내용이 이미 있습니다'}
               onClick={() => void act(async () => (await updateBranch(project, current.name)).message)}>메인 가져오기</Button>
             {mine && write && (
               <Button size="sm" variant="ghost" icon={<Trash />} disabled={busy || Boolean(current.request)} title={current.request ? '열린 합치기 요청이 있어 지우지 않습니다' : '브랜치와 작업 폴더를 지웁니다'}
-                onClick={() => { if (window.confirm(`${current.name} 브랜치를 지울까요? 저장하지 않은 변경도 사라집니다.`)) void act(async () => { await deleteBranch(project, current.name); setBranch('main'); return '브랜치를 지웠습니다.' }) }}>지우기</Button>
+                onClick={() => { if (window.confirm(`${current.name} 브랜치를 지울까요? 저장하지 않은 변경도 사라집니다.`)) void act(async () => { await deleteBranch(project, current.name); setBranch('dev'); return '브랜치를 지웠습니다.' }) }}>지우기</Button>
             )}
           </>}
         </div>
@@ -167,9 +168,9 @@ export function RepoCard({ project, version, user }: { project: string; version:
               {open.map((r) => (
                 <li key={r.id} className="rounded-md border border-line px-2.5 py-2">
                   <p className="flex flex-wrap items-center gap-1.5"><GitMerge size={13} className="text-info" aria-hidden="true" />
-                    <code className="text-micro">{r.branch}</code><span className="text-fg-3">{r.by.name} · {formatDate(r.at)}</span></p>
+                    <code className="text-micro">{r.branch}</code>{r.generated && <Badge tone="info">AI 재생성</Badge>}<span className="text-fg-3">{r.by.name} · {formatDate(r.at)}</span></p>
                   {r.note && <p className="mt-0.5 text-fg-2">{r.note}</p>}
-                  {r.conflicts.length > 0 && <p className="mt-0.5 text-micro text-danger">충돌: {r.conflicts.join(', ')} — 요청한 사람이 메인 가져오기로 풀어야 합니다</p>}
+                  {r.conflicts.length > 0 && <p className="mt-0.5 text-micro text-danger">충돌: {r.conflicts.join(', ')} — {r.generated ? 'AI가 바꾼 파일을 사람도 고쳤습니다. 반려한 뒤 그 파일은 사람이 맞추세요' : "요청한 사람이 'dev 가져오기'로 풀어야 합니다"}</p>}
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <Button size="sm" variant="ghost" onClick={() => setDialog({ diff: r })}>차이 보기</Button>
                     {head && <>
@@ -184,19 +185,32 @@ export function RepoCard({ project, version, user }: { project: string; version:
           </section>
         )}
 
+        {(() => {
+          const release = repo.branches.find((b) => b.name === 'main')
+          const pending = repo.pending_release ?? (release ? release.behind : 0)
+          return (
+            <section aria-label="릴리스" className="flex flex-wrap items-center gap-1.5 rounded-md bg-sunken px-2.5 py-2">
+              <span className="min-w-0 flex-1 text-fg-2">main(고객 납품): {!release ? <>아직 릴리스 안 함 (첫 릴리스 때 생김 · dev 커밋 <strong>{pending}</strong>개)</>
+                : pending ? <>dev보다 <strong>{pending}</strong>개 뒤 (릴리스 대기)</> : 'dev와 같음'}</span>
+              <Button size="sm" variant="secondary" disabled={!head || busy || !pending}
+                title={!head ? NEEDS.develop : !pending ? '릴리스할 dev 커밋이 없습니다' : 'dev를 main으로 올리고 태그 release-<날짜>-<n>을 답니다'}
+                onClick={() => { if (window.confirm(`dev의 커밋 ${pending}개를 main(고객 납품)에 릴리스할까요?`)) void act(async () => { const r = await releaseRepo(project); return `릴리스했습니다: ${r.tag} (커밋 ${r.commits}개)` }) }}>릴리스</Button>
+            </section>
+          )
+        })()}
         {head && remote && (
           <section aria-label="원격" className="flex flex-wrap items-center gap-1.5 rounded-md bg-sunken px-2.5 py-2">
             <CloudArrowUp size={14} className="text-fg-3" aria-hidden="true" />
             {!remote.url ? <span className="text-fg-3">원격 저장소 없음 (3단계 Git에서 설정)</span>
               : <span className="min-w-0 flex-1 text-fg-2">
-                  원격 {remote.branch}: {remote.ahead === null ? '확인 전' : remote.ahead || remote.behind
+                  원격 dev: {remote.ahead === null ? '확인 전' : remote.ahead || remote.behind
                     ? <>{remote.ahead}개 앞섬{remote.behind ? <span className="text-danger"> · {remote.behind}개 뒤처짐</span> : ''}</> : '같음'}
                   {remote.error && <span className="block text-micro text-danger">{remote.error}</span>}
                 </span>}
             {remote.url && <>
               <Button size="sm" variant="ghost" disabled={busy} onClick={() => void act(async () => { setRemote(await checkRemote(project)); return '원격을 확인했습니다.' })}>원격 확인</Button>
-              <Button size="sm" variant="ok" disabled={busy || Boolean(remote.behind)} title={remote.behind ? '원격에 서버에 없는 커밋이 있어 올리지 않습니다' : 'main과 최종본 태그를 원격에 올립니다'}
-                onClick={() => void act(async () => { await startGitJob(project, version, () => { repoChanged() }); return '올리는 중입니다 (3단계 Git에서 진행 확인).' })}>올리기</Button>
+              <Button size="sm" variant="ok" disabled={busy || Boolean(remote.behind)} title={remote.behind ? '원격에 서버에 없는 커밋이 있어 올리지 않습니다' : 'dev와 태그를 원격에 올립니다 (테스트 배포)'}
+                onClick={() => void act(async () => { await startGitJob(project, version, () => { repoChanged() }); return '올리는 중입니다 (3단계 Git에서 진행 확인).' })}>dev 올리기</Button>
             </>}
           </section>
         )}
@@ -217,7 +231,7 @@ export function RepoCard({ project, version, user }: { project: string; version:
                       {c.refs.filter((r) => r.type !== 'head').map((r) => (
                         <span key={r.type + r.name} className={cx('shrink-0 rounded-sm px-1 text-micro',
                           r.type === 'tag' ? 'bg-warn-soft text-warn' : r.type === 'remote' ? 'bg-info-soft text-info'
-                            : r.name === 'main' ? 'bg-sunken font-medium text-fg' : 'bg-ok-soft text-ok')}>{r.type === 'tag' ? r.name.replace('final-', '') : r.name}</span>
+                            : r.name === 'main' || r.name === 'dev' || r.name === 'gen' ? 'bg-sunken font-medium text-fg' : 'bg-ok-soft text-ok')}>{r.type === 'tag' ? r.name.replace('final-', '') : r.name}</span>
                       ))}
                       <span className={cx('min-w-0 truncate text-small', c.ai ? 'text-ai' : 'text-fg')}>{c.subject}</span>
                     </span>
@@ -252,7 +266,7 @@ function NewBranchDialog({ project, user, onClose, onMade }: { project: string; 
   }
   return (
     <Modal title="새 브랜치" onClose={onClose}>
-      <p className="text-small text-fg-3">main에서 갈라 서버에 이 브랜치의 작업 폴더를 만듭니다. 코드 보기에서 고치고 '저장하기'로 커밋한 뒤 합치기 요청을 합니다.</p>
+      <p className="text-small text-fg-3">dev에서 갈라 서버에 이 브랜치의 작업 폴더를 만듭니다. 코드 보기에서 고치고 '저장하기'로 커밋한 뒤 합치기 요청을 합니다.</p>
       <div><Label htmlFor={id} hint="예: feature/홍길동-로그인">브랜치 이름</Label>
         <TextInput dense id={id} value={name} onChange={(e) => setName(e.target.value)} autoFocus /></div>
       {error && <p role="alert" className="text-danger">{error}</p>}
@@ -274,7 +288,7 @@ function RequestDialog({ project, branch, ahead, onClose, onDone }: { project: s
   }
   return (
     <Modal title={`합치기 요청 · ${branch}`} onClose={onClose}>
-      <p className="text-small text-fg-3">커밋 {ahead}개를 main에 합쳐 달라고 개발자에게 알립니다. 합치거나 반려하면 알림으로 돌아옵니다.</p>
+      <p className="text-small text-fg-3">커밋 {ahead}개를 dev에 합쳐 달라고 개발자에게 알립니다 (자기 요청은 다른 개발자가 승인). 합치거나 반려하면 알림으로 돌아옵니다.</p>
       <TextArea dense rows={3} aria-label="요청 메모" placeholder="무엇을 고쳤는지 (선택)" value={text} onChange={(e) => setText(e.target.value)} />
       {error && <p role="alert" className="text-danger">{error}</p>}
       <div className="flex justify-end gap-2">
@@ -323,11 +337,11 @@ function BranchDiffDialog({ project, request, onClose }: { project: string; requ
   const [error, setError] = useState('')
   useEffect(() => { getBranchDiff(project, request.branch).then(setDiff).catch((e) => setError((e as Error).message)) }, [project, request.branch])
   return (
-    <Modal wide title={`차이 보기 · main ← ${request.branch}`} onClose={onClose}>
+    <Modal wide title={`차이 보기 · dev ← ${request.branch}`} onClose={onClose}>
       {error && <p role="alert" className="text-danger">{error}</p>}
       {!diff && !error && <Loading label="차이를 읽는 중" lines={4} />}
       {diff && <>
-        <p className="text-small text-fg-3">{request.by.name} · 커밋 {diff.ahead}개{diff.behind ? ` · main보다 ${diff.behind}개 뒤처짐 (합칠 때 충돌할 수 있음)` : ''}{request.note ? ` · ${request.note}` : ''}</p>
+        <p className="text-small text-fg-3">{request.by.name} · 커밋 {diff.ahead}개{diff.behind ? ` · dev보다 ${diff.behind}개 뒤처짐 (합칠 때 충돌할 수 있음)` : ''}{request.note ? ` · ${request.note}` : ''}</p>
         <DiffView files={diff.files} />
       </>}
     </Modal>

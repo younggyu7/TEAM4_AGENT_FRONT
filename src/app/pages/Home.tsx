@@ -2,6 +2,7 @@ import { ArrowRight, FileText, SlackLogo, TreeStructure, UploadSimple, Warning }
 import { useEffect, useId, useMemo, useState } from 'react'
 import { getLlmOptions, listPickMembers, type LlmOptions, type PickMember, type SlackConnected } from '../../api'
 import { NoticeItem, useNotices } from '../components/Notices'
+import { MyWorkCard, TokenCard } from '../components/MyWork'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
 import { HomeInsights } from '../components/Insights'
@@ -77,6 +78,8 @@ export function Home({ shell }: { shell: ShellBase }) {
 
           <NoticesCard navigate={navigate} reloadKey={projects} />
 
+          <MyWorkCard navigate={navigate} />
+
           <Card aria-labelledby="recent-drafts">
             <CardHeader eyebrow="Drafts" title="최근 초안" titleId="recent-drafts" actions={<Button size="sm" variant="ghost" onClick={onReload}>새로고침</Button>} />
             {projects.state === 'loading' && <Loading label="초안 목록을 불러오는 중" lines={5} />}
@@ -124,6 +127,7 @@ export function Home({ shell }: { shell: ShellBase }) {
             </div>
           </Card>
 
+          <TokenCard />
           <NewRunCard canUpload={can(user, 'upload')} meId={user.id} onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
         </div>
     </Shell>

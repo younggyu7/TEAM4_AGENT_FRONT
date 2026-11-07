@@ -246,10 +246,11 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
     setError('')
     try { setSaved(await checkRemote(project)) } catch (e) { setError((e as Error).message) } finally { setSending(false) }
   }
+  const [target, setTarget] = useState<'dev' | 'main'>('dev')
   const push = async () => {
     setSending(true)
     try {
-      await startGitJob(project, version, onFinished)
+      await startGitJob(project, version, onFinished, target)
       onClose()
     } catch (e) {
       setError((e as Error).message)
@@ -262,15 +263,11 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
       {error && <p role="alert" className="text-danger">{error}</p>}
       {saved && editing && (
         <>
-          <p className="text-small text-fg-3">이 프로젝트의 원격 저장소 하나를 적습니다 (화면·백엔드·DB를 한 저장소에). 브랜치를 비우면 <code>main</code>. 토큰은 서버에 암호화해 두고 다시 보여 주지 않습니다 (비우면 저장된 토큰 그대로).</p>
+          <p className="text-small text-fg-3">이 프로젝트의 원격 저장소 하나를 적습니다 (화면·백엔드·DB를 한 저장소에). 올릴 때 <code>dev</code>·<code>main</code> 중 고른 브랜치를 같은 이름으로 올립니다. 토큰은 서버에 암호화해 두고 다시 보여 주지 않습니다 (비우면 저장된 토큰 그대로).</p>
           <div><Label htmlFor={`${id}-u`}>주소</Label>
             <TextInput dense id={`${id}-u`} placeholder="https://github.com/팀/저장소.git" value={form.url} onChange={set('url')} /></div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div><Label htmlFor={`${id}-b`}>원격 브랜치</Label>
-              <TextInput dense id={`${id}-b`} placeholder="main" value={form.branch} onChange={set('branch')} /></div>
-            <div><Label htmlFor={`${id}-t`} hint={saved.has_token ? '저장됨 ****' : '쓰기 권한'}>토큰</Label>
-              <TextInput dense id={`${id}-t`} type="password" autoComplete="off" value={form.token} onChange={set('token')} /></div>
-          </div>
+          <div><Label htmlFor={`${id}-t`} hint={saved.has_token ? '저장됨 ****' : '쓰기 권한'}>토큰</Label>
+            <TextInput dense id={`${id}-t`} type="password" autoComplete="off" value={form.token} onChange={set('token')} /></div>
           <div className="flex justify-end gap-2">
             {saved.url && <Button variant="ghost" onClick={() => setEditing(false)}>취소</Button>}
             <Button variant="primary" disabled={sending || !form.url.trim()} onClick={() => void save()}>저장</Button>
@@ -279,7 +276,7 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
       )}
       {saved && !editing && (
         <>
-          <p className="text-small"><strong>원격</strong>: {saved.url} · {saved.branch} · 토큰 {saved.has_token ? '저장됨' : '없음 (서버 공통 토큰)'}</p>
+          <p className="text-small"><strong>원격</strong>: {saved.url} · 토큰 {saved.has_token ? '저장됨' : '없음 (서버 공통 토큰)'}</p>
           <p className="text-small">
             {saved.ahead === null ? <Badge tone="neutral">원격 확인 전</Badge>
               : saved.behind ? <Badge tone="danger">원격에 서버에 없는 커밋 {saved.behind}개 — 올리지 않습니다</Badge>
@@ -287,11 +284,16 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
             {saved.checked_at && <span className="ml-2 text-micro text-fg-3">확인 {formatDate(saved.checked_at)}</span>}
             {saved.error && <span className="block text-micro text-danger">{saved.error}</span>}
           </p>
-          <p className="text-small text-fg-3">서버 코드 저장소의 main과 최종본 태그(final-v…)를 올립니다. 원격에 서버에 없는 커밋이 있으면 덮어쓰지 않고 멈춥니다 (서버 밖에서 정리). 빌드 결과·node_modules·미리보기는 커밋되지 않습니다.</p>
+          <p className="text-small text-fg-3">고른 브랜치와 태그(final-v…·release-…)를 올립니다. dev를 올리면 원격 저장소의 배포 설정(.github/workflows/deploy-dev.yml)이 테스트 서버에 다시 띄웁니다. main은 '릴리스'한 고객 납품본입니다 (첫 릴리스 전에는 없음). AI 생성 결과(gen)는 올리지 않습니다. 원격에 서버에 없는 커밋이 있으면 덮어쓰지 않고 멈춥니다 (서버 밖에서 정리). 빌드 결과·node_modules·미리보기는 커밋되지 않습니다.</p>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setEditing(true)}>원격 설정 바꾸기</Button>
             <Button variant="ghost" disabled={sending} onClick={() => void check()}>원격 확인</Button>
-            <Button variant="ok" icon={<GitBranch />} disabled={sending || Boolean(saved.behind)} onClick={() => void push()}>{sending ? '진행 중…' : '올리기'}</Button>
+            <select aria-label="올릴 브랜치" value={target} onChange={(e) => setTarget(e.target.value as 'dev' | 'main')}
+              className="min-h-9 rounded-md border border-control bg-card px-2 text-small">
+              <option value="dev">dev (테스트 배포)</option>
+              <option value="main" disabled={Boolean(saved.targets?.main?.missing)}>main (고객 납품){saved.targets?.main?.missing ? ' — 릴리스 전' : ''}</option>
+            </select>
+            <Button variant="ok" icon={<GitBranch />} disabled={sending || (target === 'dev' && Boolean(saved.behind))} onClick={() => void push()}>{sending ? '진행 중…' : `${target} 올리기`}</Button>
           </div>
         </>
       )}

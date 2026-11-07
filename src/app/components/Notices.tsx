@@ -14,6 +14,7 @@ export const NOTICE_KIND: Record<Notice['kind'], { tone: Tone; label: string }> 
   rejected: { tone: 'danger', label: '반려' },
   uploaded: { tone: 'neutral', label: '분석 완료' }, erd_draft: { tone: 'neutral', label: 'ERD 초안' }, developed: { tone: 'ok', label: '개발 초안' },
   merge_request: { tone: 'info', label: '합치기 요청' }, merged: { tone: 'ok', label: '합치기 완료' }, merge_rejected: { tone: 'danger', label: '합치기 반려' },
+  task_assigned: { tone: 'warn', label: '작업 배정' }, released: { tone: 'ok', label: '릴리스' },
 }
 
 /** 나에게 온 알림: 화면을 열 때, 30초마다, 알림이 바뀌었을 때 다시 읽는다. dismiss는 확인(나에게서만 지움) */

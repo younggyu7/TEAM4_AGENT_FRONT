@@ -73,7 +73,7 @@ export interface Notice {
   project: string
   /** 상태 알림(수정 지시·대기·승인 요청·승인 대기·개발 대기·반려) / 일 알림(업로드 분석 완료·ERD 초안·개발 초안) */
   kind: 'directive' | 'waiting' | 'request' | 'decide' | 'develop' | 'rejected' | 'uploaded' | 'erd_draft' | 'developed'
-    | 'merge_request' | 'merged' | 'merge_rejected'
+    | 'merge_request' | 'merged' | 'merge_rejected' | 'task_assigned' | 'released'
   at: string
   page: 'spec' | 'erd' | 'final' | 'develop'
   version: string
@@ -185,11 +185,11 @@ export interface AppFile { path: string; size: number; generated: boolean; edite
 export interface AppFileTree { branch: string; changes: number; deleted: string[]; files: AppFile[]; holes: number; empty_holes: number; edited: number; ai_holes: number; ai_files: number }
 export interface AppFileContent extends AppFile { content: string; hole_list: { name: string; line: number; empty: boolean; ai: boolean }[] }
 
-export async function getAppFiles(project: string, branch = 'main'): Promise<AppFileTree> {
+export async function getAppFiles(project: string, branch = 'dev'): Promise<AppFileTree> {
   return (await (await request(`/develop/files?${query({ project, branch })}`)).json()) as AppFileTree
 }
 
-export async function getAppFile(project: string, path: string, branch = 'main'): Promise<AppFileContent> {
+export async function getAppFile(project: string, path: string, branch = 'dev'): Promise<AppFileContent> {
   return (await (await request(`/develop/file?${query({ project, path, branch })}`)).json()) as AppFileContent
 }
 
@@ -202,7 +202,7 @@ export async function saveAppFile(project: string, path: string, content: string
 /* ------------------------------------------------------------ 최종 개발물 코드 저장소 (브랜치·커밋·합치기 요청, 서버 services/repo.py) */
 export interface RepoBranch {
   name: string; head: string; author: string; date: string; subject: string
-  /** main에 없는 커밋 수 / main에만 있는 커밋 수 */
+  /** dev에 없는 커밋 수 / dev에만 있는 커밋 수 (main은 behind = 릴리스할 dev 커밋 수) */
   ahead: number; behind: number
   /** 커밋하지 않은 변경 수 */
   changes: number
@@ -214,11 +214,19 @@ export interface RepoBranch {
 export interface MergeRequest {
   id: number; branch: string; note: string; by: { id: number; name: string }; at: string
   status: 'open' | 'merged' | 'rejected'; head: string; ahead: number
+  /** 다시 개발한 결과(gen → dev) — 최종 개발하기가 낸 요청 */
+  generated?: boolean
   /** 마지막 합치기에서 충돌한 파일 */
   conflicts: string[]
   commit?: string; reason?: string; done_by?: { id: number; name: string }; done_at?: string
 }
-export interface RepoOverview { branches: RepoBranch[]; requests: MergeRequest[]; version: string; main: string }
+export interface RepoOverview {
+  branches: RepoBranch[]; requests: MergeRequest[]; version: string; main: string
+  /** main(고객 납품)이 있는지 — 첫 릴리스 때 생긴다 */
+  released?: boolean
+  /** 릴리스할 dev 커밋 수 (main이 없으면 dev 전체) */
+  pending_release?: number
+}
 export interface RepoRef { type: 'branch' | 'tag' | 'remote' | 'head'; name: string }
 export interface RepoCommit { sha: string; parents: string[]; author: string; email: string; date: string; subject: string; refs: RepoRef[]; ai: boolean }
 export interface DiffFile { path: string; status: 'A' | 'M' | 'D' | string; diff: string; truncated: boolean }
@@ -240,7 +248,7 @@ export async function getBranchDiff(project: string, branch: string): Promise<{ 
   return (await (await request(`/develop/repo/diff?${query({ project, branch })}`)).json()) as { branch: string; ahead: number; behind: number; files: DiffFile[] }
 }
 
-export async function createBranch(project: string, name: string, from = 'main'): Promise<RepoBranch> {
+export async function createBranch(project: string, name: string, from = 'dev'): Promise<RepoBranch> {
   return (await (await post('/develop/repo/branch', { project, name, from })).json()) as RepoBranch
 }
 
@@ -281,7 +289,9 @@ export async function getPreviewTerminal(project: string): Promise<PreviewTermin
 
 /** 원격 하나 (화면·백엔드·DB를 한 저장소에). ahead·behind는 마지막으로 받은(원격 확인·올리기) origin 기준, 없으면 null */
 export interface GitSettings { url: string; branch: string; has_token: boolean; ahead: number | null; behind: number | null; exists: boolean
-  checked_at?: string; error?: string }
+  checked_at?: string; error?: string
+  /** 브랜치(dev·main)별 원격 비교. missing: 서버에 그 브랜치가 없음 (main은 첫 릴리스 전) */
+  targets?: Record<string, { ahead: number | null; behind: number | null; exists: boolean; missing?: boolean }> }
 
 export async function getGitSettings(project: string): Promise<GitSettings> {
   return (await (await request(`/develop/git?${query({ project })}`)).json()) as GitSettings
@@ -291,8 +301,14 @@ export async function saveGitSettings(project: string, body: { url: string; bran
   return (await (await post('/develop/git', { project, ...body })).json()) as GitSettings
 }
 
-export async function pushGit(project: string, version: string): Promise<Job> {
-  return ((await (await post('/develop/git/push', { project, version })).json()) as { job: Job }).job
+/** 고른 브랜치를 원격에 올린다: dev(테스트 배포 신호) · main(릴리스한 고객 납품본) */
+export async function pushGit(project: string, version: string, target: 'dev' | 'main' = 'dev'): Promise<Job> {
+  return ((await (await post('/develop/git/push', { project, version, target })).json()) as { job: Job }).job
+}
+
+/** 릴리스: dev를 main으로 앞으로 감고 태그 release-<날짜>-<n> */
+export async function releaseRepo(project: string): Promise<{ tag: string; commit: string; commits: number }> {
+  return (await (await post('/develop/repo/release', { project })).json()) as { tag: string; commit: string; commits: number }
 }
 
 /** 화면 / 백엔드 / DB 고르기 칸 (supported=false는 '지원 예정': 최종 개발하기가 아직 못 만듦) */
@@ -633,4 +649,102 @@ export async function getJob(id: string): Promise<Job> {
 /** 프로젝트에서 진행 중인 작업 (없으면 null). 로그아웃·새로고침으로 잃은 진행 창을 다시 띄울 때 */
 export async function getRunningJob(project: string): Promise<Job | null> {
   return ((await (await request(`/jobs/running?project=${encodeURIComponent(project)}`)).json()) as { job: Job | null }).job
+}
+
+// ---------------------------------------------------------------- 화면 구성·작업 묶음·배정·검토 (FR-049~053)
+
+export interface LayoutData {
+  home?: { todo?: boolean; notices?: boolean; areas?: boolean }
+  menu: { group: string; name: string; hidden: boolean; pages: { name: string; screens: string[]; hidden: boolean }[] }[]
+}
+
+export async function getLayout(project: string): Promise<{ layout: LayoutData; menu: { group: string; name: string }[]; screens: Record<string, string>; path: string }> {
+  return (await (await request(`/develop/layout?${query({ project })}`)).json()) as { layout: LayoutData; menu: { group: string; name: string }[]; screens: Record<string, string>; path: string }
+}
+
+export async function saveLayout(project: string, layout: LayoutData): Promise<{ layout: LayoutData; commit: string | null }> {
+  const res = await request('/develop/layout', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, layout }) })
+  return (await res.json()) as { layout: LayoutData; commit: string | null }
+}
+
+export type WorkStatus = 'unassigned' | 'assigned' | 'in_progress' | 'review' | 'done' | 'rejected'
+
+export interface WorkItem {
+  key: string
+  kind: 'common_ui' | 'ui' | 'common_server' | 'function'
+  layer: 'frontend' | 'backend'
+  title: string
+  summary: string
+  functions: string[]
+  files: string[]
+  file_count: number
+  empty_holes: number
+  ai_holes: number
+  ai_files: number
+  edited: number
+  status: WorkStatus
+  status_label: string
+  assignee?: { id: number; name: string }
+  branch?: string
+  request_id?: number | null
+  reason?: string
+  ahead?: number
+  behind?: number
+  self_approved?: boolean
+  history: { at: string; by: { id: number; name: string }; what: string }[]
+}
+
+export interface WorkOverview {
+  items: WorkItem[]
+  counts: Record<WorkStatus, number>
+  people: { id: number; name: string; total: number; done: number; review: number }[]
+  developers: { id: number; name: string }[]
+  labels: Record<WorkStatus, string>
+  version: string
+}
+
+export async function getWork(project: string): Promise<WorkOverview> {
+  return (await (await request(`/develop/work?${query({ project })}`)).json()) as WorkOverview
+}
+
+export async function getWorkItem(project: string, key: string): Promise<{ item: WorkItem; brief: string; rules: string }> {
+  return (await (await request(`/develop/work/item?${query({ project, key })}`)).json()) as { item: WorkItem; brief: string; rules: string }
+}
+
+export async function assignWork(project: string, key: string, user_id: number): Promise<WorkItem> {
+  return (await (await post('/develop/work/assign', { project, key, user_id })).json()) as WorkItem
+}
+
+export async function submitWork(project: string, key: string, note = ''): Promise<WorkItem> {
+  return (await (await post('/develop/work/submit', { project, key, note })).json()) as WorkItem
+}
+
+export async function approveWork(project: string, key: string): Promise<WorkItem> {
+  return (await (await post('/develop/work/approve', { project, key })).json()) as WorkItem
+}
+
+export async function rejectWork(project: string, key: string, reason: string): Promise<WorkItem> {
+  return (await (await post('/develop/work/reject', { project, key, reason })).json()) as WorkItem
+}
+
+export interface MyWork { projects: { project: string; version: string; items: WorkItem[]; reviews: WorkItem[] }[]; labels: Record<WorkStatus, string> }
+
+export async function getMyWork(): Promise<MyWork> {
+  return (await (await request('/develop/work/mine')).json()) as MyWork
+}
+
+// ---------------------------------------------------------------- 개인 접속 토큰 (VS Code 확장)
+
+export interface AccessTokenInfo { id: number; name: string; prefix: string; created_at: string | null; last_used_at: string | null }
+
+export async function listTokens(): Promise<AccessTokenInfo[]> {
+  return ((await (await request('/auth/tokens')).json()) as { tokens: AccessTokenInfo[] }).tokens
+}
+
+export async function createToken(name: string): Promise<{ token: string; info: AccessTokenInfo }> {
+  return (await (await post('/auth/tokens', { name })).json()) as { token: string; info: AccessTokenInfo }
+}
+
+export async function deleteToken(id: number): Promise<void> {
+  await request(`/auth/tokens?${query({ id })}`, { method: 'DELETE' })
 }

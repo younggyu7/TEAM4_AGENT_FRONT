@@ -48,8 +48,8 @@ export async function startDevelopJob(project: string, version: string, ai: { bu
 }
 
 /** git 올리기: 서버의 코드 폴더 → 화면·백엔드 저장소 */
-export async function startGitJob(project: string, version: string, onFinish: (job: Job) => void): Promise<void> {
-  track(await pushGit(project, version), onFinish)
+export async function startGitJob(project: string, version: string, onFinish: (job: Job) => void, target: 'dev' | 'main' = 'dev'): Promise<void> {
+  track(await pushGit(project, version, target), onFinish)
 }
 
 /** 원본 요구서 업로드 → 기능 명세 초안까지 실행. 작업은 프로젝트 ID(업로드한 프로젝트 이름)로 기록한다.

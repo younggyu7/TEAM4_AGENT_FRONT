@@ -8,6 +8,7 @@ import { GitDialog } from '../components/DevelopActions'
 import { CodeBrowser, OPEN_CODE_FILE } from '../components/CodeBrowser'
 import { JobPanel } from '../components/JobPanel'
 import { PreviewTerminal } from '../components/PreviewTerminal'
+import { LayoutEditor, WorkBundles } from '../components/WorkBundles'
 import { useRepoBranch, useRepoVersion } from '../lib/repo'
 import { can, NEEDS, type User } from '../lib/session'
 import { Badge, Button, Card, CardHeader, cx, ErrorNote } from '../components/ui'
@@ -187,7 +188,8 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
           )}
           {developed?.check !== undefined && (
             <Row label="자동 확인" id="develop-check">
-              {developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
+              {developed.check === null && developed.request ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — gen → dev 합치기 요청 #{developed.request}을 승인한 뒤 2단계에서 실행해 확인하세요</span>
+                : developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
                 : !developed.check.counts ? <span className="text-danger">{developed.check.message}</span>
                 : (
                   <>
@@ -216,17 +218,28 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
         </dl>
       )}
       {step === '1' && developed && (
-        <section aria-label="코드" className="mt-4">
-          <h2 className="mb-2 flex flex-wrap items-center gap-2 text-label font-semibold">코드
+        <section aria-label="작업" className="mt-4 space-y-3">
+          <h2 className="text-label font-semibold">작업 묶음 <span className="font-normal text-fg-3">· 코드를 사람에게 나눠 맡기는 단위. 배정하면 작업 브랜치가 생기고, 담당자가 VS Code 확장(또는 아래 코드 보기)에서 고쳐 제출하면 다른 개발자가 승인합니다</span></h2>
+          <WorkBundles project={project} user={user} refreshKey={developed.at} />
+          <details className="rounded-lg border border-line bg-card">
+            <summary className="cursor-pointer px-3 py-2 text-label font-semibold">화면 구성 <span className="font-normal text-fg-3">· 생성 앱의 메뉴 이름·순서·숨김과 홈 칸 (코드 수정 없이, 저장하면 dev에 커밋)</span></summary>
+            <div className="border-t border-line p-3"><LayoutEditor project={project} user={user} /></div>
+          </details>
+        </section>
+      )}
+      {step === '1' && developed && (
+        <details aria-label="코드" className="mt-4 rounded-lg border border-line bg-card px-3 py-2">
+          <summary className="cursor-pointer text-label font-semibold">전체 파일 <span className="font-normal text-fg-3">· 펼쳐서 전체 코드 보기·고치기</span></summary>
+          <h2 className="my-2 flex flex-wrap items-center gap-2 text-label font-semibold">코드
             <select aria-label="코드 브랜치" value={branch} onChange={(e) => setBranch(e.target.value)}
               className="min-h-8 rounded-md border border-control bg-card px-2 text-small font-normal text-fg">
-              {(branches.length ? branches : [{ name: 'main', protected: true } as RepoBranch]).map((b) => (
+              {(branches.length ? branches : [{ name: 'dev', protected: true } as RepoBranch]).map((b) => (
                 <option key={b.name} value={b.name}>{b.name}{b.protected ? ' (보호 · 읽기만)' : b.changes ? ` · 저장 안 한 변경 ${b.changes}` : ''}</option>
               ))}
             </select>
             <span className="font-normal text-fg-3">노란 줄은 빈 업무 로직(기본 동작만) · 브랜치는 오른쪽 '코드 저장소'에서 만듭니다</span></h2>
           <CodeBrowser project={project} branch={branch} canEdit={can(user, 'repo_write')} refreshKey={developed.at} openPath={openPath} />
-        </section>
+        </details>
       )}
 
       {step === '2' && (
@@ -283,7 +296,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                   {record.git.commit ? <> · {record.git.branch}@<code>{record.git.commit.slice(0, 10)}</code></> : record.git.pushed ? ` · ${Object.values(record.git.pushed).join(', ')} (예전 두 저장소 방식)` : ''}</p>
               )}
               <Button variant={remote?.ahead ? 'ok' : 'secondary'} icon={<GitBranch />} disabled={!allowed || !developed || job?.status === 'running'}
-                title={!allowed ? NEEDS.develop : !developed ? '1단계 개발을 먼저 하세요' : '코드 저장소의 main과 최종본 태그를 원격에 올립니다 (처음엔 원격 설정)'}
+                title={!allowed ? NEEDS.develop : !developed ? '1단계 개발을 먼저 하세요' : '코드 저장소의 dev(테스트 배포)나 main(릴리스)과 태그를 원격에 올립니다 (처음엔 원격 설정)'}
                 onClick={() => setGitOpen(true)}>
                 원격 설정 · 올리기
               </Button>
@@ -291,7 +304,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
           </Row>
           <Row label="저장소 구성">
             <span className="text-small text-fg-3">서버의 코드 폴더 하나가 git 저장소입니다. 화면(frontend)·백엔드(backend)·DB(db)·개발 스펙(spec)을 한 저장소에 같이 올립니다.
-              main은 최종 개발하기(AI 커밋, 태그 final-v최종본)와 개발자의 합치기로만 바뀌고, 개발자는 브랜치에서 고쳐 저장하기 → 합치기 요청을 합니다.
+              dev(통합·테스트 배포)는 최종 개발하기(AI 커밋, 태그 final-v최종본)·개발자의 합치기·화면 구성 저장으로만 바뀌고, main(고객 납품)은 '릴리스'로만 dev까지 앞으로 갑니다. 개발자는 작업 브랜치에서 고쳐 저장하기 → 제출(합치기 요청)을 합니다.
               빌드 결과·node_modules·미리보기·생성기 기록·시연 계정은 커밋하지 않습니다. 원격에 서버에 없는 커밋이 있으면 덮어쓰지 않고 멈춥니다.</span>
           </Row>
         </dl>

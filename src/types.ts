@@ -173,8 +173,10 @@ export interface VersionRecord {
     build?: boolean
     ai?: { mode?: 'build' | 'logic'; model?: string; effort?: string }
     /** 이번 개발에 쓴 LLM (AI 안 씀이면 0) */
-    /** 코드 저장소 main에 남긴 개발 커밋 (바뀐 것이 없으면 null) */
+    /** 코드 저장소 gen에 남긴 개발 커밋 (바뀐 것이 없으면 null). 처음 개발이면 dev도 같은 커밋 */
     commit?: string | null
+    /** 다시 개발했을 때 낸 gen → dev 합치기 요청 ID */
+    request?: number | null
     usage?: { calls: number; input: number; output: number; model: string; effort: string; mode: 'build' | 'logic' | 'none' }
     /** 기능별 구현 방식과 고객 답 대기 규칙 */
     summary?: { functions: number; with_api: number; ai: string[]; failed: string[]; template: string[]; todo_count: number
