@@ -15,6 +15,9 @@ function versionLabel(stage: StagePage, t: Record<StagePage, string>, finalDone:
   return finalDone ? `v${v} 미리 보기` : `v${v}`
 }
 
+/** 칸이 좁으므로 단계 줄에서는 연도를 뺀 날짜 (11.06 10:20). 전체는 칸의 title로 */
+const short = (iso?: string) => formatDate(iso).replace(/^\d{4}\./, '')
+
 type Develop = NonNullable<VersionRecord['develop']>
 type Tone = 'ok' | 'danger' | 'muted'
 
@@ -22,10 +25,10 @@ type Tone = 'ok' | 'danger' | 'muted'
 function checkStatus(d?: Develop): { text: string; tone: Tone; done: boolean } {
   if (!d) return { text: '개발 후', tone: 'muted', done: false }
   const c = d.check
-  if (c === undefined) return { text: '자동 확인 기록 없음', tone: 'muted', done: false }
-  if (c === null) return { text: '서버 코드가 없어 하지 않음', tone: 'muted', done: false }
+  if (c === undefined) return { text: '기록 없음', tone: 'muted', done: false }
+  if (c === null) return { text: '서버 코드 없음', tone: 'muted', done: false }
   if (!c.counts) return { text: '확인 실패', tone: 'danger', done: false }
-  return c.ok ? { text: `통과 · 조회 API ${c.apis ?? 0}개`, tone: 'ok', done: true }
+  return c.ok ? { text: `통과 · API ${c.apis ?? 0}개`, tone: 'ok', done: true }
     : { text: `서버 오류 ${c.counts.errors}개`, tone: 'danger', done: false }
 }
 
@@ -59,17 +62,17 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
   const steps: { key: string; label: string; screen: string; status: string; tone: Tone; done: boolean; current: boolean
     locked?: string; go: () => void }[] = [
     { key: 'spec', label: '요구사항 분석', screen: `기능 명세 ${versionLabel('spec', targets, done('final'))}`,
-      status: done('spec') ? `확정 ${formatDate(finalized.spec)}` : '진행 중', tone: done('spec') ? 'ok' : 'muted',
+      status: done('spec') ? `확정 ${short(finalized.spec)}` : '진행 중', tone: done('spec') ? 'ok' : 'muted',
       done: done('spec'), current: page === 'spec', go: () => onGo('spec') },
     { key: 'erd', label: '설계', screen: `ERD ${versionLabel('erd', targets, done('final'))}`,
-      status: done('erd') ? `확정 ${formatDate(finalized.erd)}` : done('spec') ? '진행 중' : '앞 단계 확정 전',
+      status: done('erd') ? `확정 ${short(finalized.erd)}` : done('spec') ? '진행 중' : '앞 단계 확정 전',
       tone: done('erd') ? 'ok' : 'muted', done: done('erd'), current: page === 'erd', go: () => onGo('erd') },
     { key: 'final', label: '개발 범위 확정', screen: `최종 산출물 ${versionLabel('final', targets, done('final'))}`,
-      status: decision ? `${approved ? '최종 승인' : '수정 지시'} ${formatDate(decision.at)}`
-        : done('final') ? `최종 확정 ${formatDate(finalized.final)} · 승인 전` : done('erd') ? '최종 확정 전' : '앞 단계 확정 전 (미리 보기)',
+      status: decision ? `${approved ? '최종 승인' : '수정 지시'} ${short(decision.at)}`
+        : done('final') ? '최종 확정 · 승인 전' : done('erd') ? '최종 확정 전' : '앞 단계 확정 전',
       tone: approved ? 'ok' : 'muted', done: approved, current: page === 'final', go: () => onGo('final') },
     { key: 'build', label: '개발 진행', screen: '최종 개발하기',
-      status: !approved ? '최종 승인 후' : develop?.at ? `개발 ${formatDate(develop.at)}` : '개발 대기',
+      status: !approved ? '최종 승인 후' : develop?.at ? `개발 ${short(develop.at)}` : '개발 대기',
       tone: develop?.at ? 'ok' : 'muted', done: Boolean(develop?.at), current: onDevelop && devStep === 'build',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '1') },
     { key: 'check', label: '테스트(검증)', screen: '자동 확인',
@@ -77,42 +80,45 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
       current: onDevelop && devStep === 'check',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', 'check') },
     { key: 'run', label: '실행·마무리', screen: '로컬 서버 · Git',
-      status: !approved ? '최종 승인 후' : !develop ? '개발 후' : git ? `Git 올림 ${formatDate(git.at)}` : '실행해 보고 Git에 올리기',
+      status: !approved ? '최종 승인 후' : !develop ? '개발 후' : git ? `Git 올림 ${short(git.at)}` : 'Git 올리기 전',
       tone: git ? 'ok' : 'muted', done: Boolean(git), current: onDevelop && devStep === 'run',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '2') },
   ]
   return (
-    <nav aria-label="진행 단계" className="mb-4">
-      <ol className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+    <nav aria-label="진행 단계" className="@container mb-4">
+      <ol className="grid grid-cols-2 gap-2 @xl:grid-cols-3 @4xl:grid-cols-6">
         {steps.map((s, i) => (
           <li key={s.key}>
-            <WhyTip text={s.locked ?? ''} align="left" className="w-full">
+            <WhyTip text={s.locked ?? ''} align="left" className="h-full w-full">
               <button
                 type="button"
                 disabled={Boolean(s.locked)}
                 aria-current={s.current ? 'step' : undefined}
                 onClick={s.go}
+                title={s.locked ? undefined : `${i + 1}. ${s.label} · ${s.screen} · ${s.status}`}
                 className={cx(
-                  'flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors duration-150',
+                  'flex h-full w-full min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-2 text-left transition-colors duration-150',
                   s.locked ? 'cursor-not-allowed border-line bg-card/40 opacity-60'
                     : s.current ? 'border-fg bg-card' : 'border-line bg-card/60 hover:border-control hover:bg-card',
                 )}
               >
-                <span
-                  aria-hidden="true"
-                  className={cx(
-                    'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-small font-semibold tabular-nums',
-                    s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
-                  )}
-                >
-                  {s.done ? <Check size={14} weight="bold" /> : i + 1}
-                </span>
-                <span className="min-w-0">
-                  <span className={cx('block truncate text-label', s.current ? 'font-semibold' : 'font-medium text-fg-2')}>{s.label}</span>
-                  <span className="block truncate text-micro text-fg-3 tabular-nums">{s.screen}</span>
-                  <span className={cx('block truncate text-micro', s.tone === 'ok' ? 'text-ok' : s.tone === 'danger' ? 'text-danger' : 'text-fg-3')}>
-                    {s.status}
+                <span className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className={cx(
+                      'inline-flex size-5 shrink-0 items-center justify-center rounded text-micro font-semibold tabular-nums',
+                      s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
+                    )}
+                  >
+                    {s.done ? <Check size={12} weight="bold" /> : i + 1}
                   </span>
+                  <span className={cx('min-w-0 text-label leading-tight break-keep', s.current ? 'font-semibold' : 'font-medium text-fg-2')}>
+                    {s.label}
+                  </span>
+                </span>
+                <span className="block truncate text-micro text-fg-3 tabular-nums">{s.screen}</span>
+                <span className={cx('block truncate text-micro tabular-nums', s.tone === 'ok' ? 'text-ok' : s.tone === 'danger' ? 'text-danger' : 'text-fg-3')}>
+                  {s.status}
                 </span>
               </button>
             </WhyTip>
