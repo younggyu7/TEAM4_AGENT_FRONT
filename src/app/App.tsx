@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { PageBoundary } from './components/PageBoundary'
 import type { ShellBase } from './components/Shell'
 import { clearCache, useProjects } from './lib/data'
 import { PAGE_LABEL, useRoute, type Route } from './lib/route'
@@ -53,6 +54,11 @@ export function App() {
     onReloadProjects: reload,
   }
 
-  return route.name === 'workspace' ? <Workspace shell={shell} />
-    : route.name === 'members' && user.is_admin ? <Members shell={shell} /> : <Home shell={shell} />
+  // 화면 오류로 전체가 검게 비지 않게 감싼다 (오류 화면에서 주소가 바뀌면 다시 그린다. 평소에는 페이지를 새로 만들지 않음)
+  return (
+    <PageBoundary resetKey={JSON.stringify(route)}>
+      {route.name === 'workspace' ? <Workspace shell={shell} />
+        : route.name === 'members' && user.is_admin ? <Members shell={shell} /> : <Home shell={shell} />}
+    </PageBoundary>
+  )
 }
