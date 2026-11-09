@@ -653,27 +653,42 @@ export async function getRunningJob(project: string): Promise<Job | null> {
 
 // ---------------------------------------------------------------- 화면 구성·작업 묶음·배정·검토 (FR-049~053)
 
+export interface LayoutSection { id: string; name: string; menus: string[] }
+
 export interface LayoutData {
+  format?: number
   home?: { todo?: boolean; notices?: boolean; areas?: boolean }
+  /** 업무 영역: 비슷한 메뉴 묶음 (생성 앱 왼쪽 메뉴·홈, 작업 묶음 화면 · / 서버 · <영역>). 메뉴 순서는 영역 순서 */
+  sections: LayoutSection[]
   menu: { group: string; name: string; hidden: boolean; pages: { name: string; screens: string[]; hidden: boolean }[] }[]
 }
 
-export async function getLayout(project: string): Promise<{ layout: LayoutData; menu: { group: string; name: string }[]; screens: Record<string, string>; path: string }> {
-  return (await (await request(`/develop/layout?${query({ project })}`)).json()) as { layout: LayoutData; menu: { group: string; name: string }[]; screens: Record<string, string>; path: string }
+/** locked: 진행 중인 작업 묶음이 있어 메뉴를 넣거나 뺄 수 없는 영역 id */
+export interface LayoutInfo { layout: LayoutData; menu: { group: string; name: string }[]; screens: Record<string, string>; path: string; locked: string[] }
+
+export async function getLayout(project: string): Promise<LayoutInfo> {
+  return (await (await request(`/develop/layout?${query({ project })}`)).json()) as LayoutInfo
 }
 
-export async function saveLayout(project: string, layout: LayoutData): Promise<{ layout: LayoutData; commit: string | null }> {
+export async function saveLayout(project: string, layout: LayoutData): Promise<LayoutInfo & { commit: string | null }> {
   const res = await request('/develop/layout', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project, layout }) })
-  return (await res.json()) as { layout: LayoutData; commit: string | null }
+  return (await res.json()) as LayoutInfo & { commit: string | null }
+}
+
+/** 업무 영역 다시 묶기 제안 (저장 안 함): rules 규칙(LLM 없음) · ai LLM 한 번 (실패하면 오류) */
+export async function suggestLayout(project: string, mode: 'rules' | 'ai', layout: LayoutData): Promise<{ layout: LayoutData; usage: { input_tokens: number; output_tokens: number; model?: string } | null }> {
+  return (await (await post('/develop/layout/suggest', { project, mode, layout })).json()) as { layout: LayoutData; usage: { input_tokens: number; output_tokens: number; model?: string } | null }
 }
 
 export type WorkStatus = 'unassigned' | 'assigned' | 'in_progress' | 'review' | 'done' | 'rejected'
 
 export interface WorkItem {
   key: string
-  kind: 'common_ui' | 'ui' | 'common_server' | 'function'
+  kind: 'common_ui' | 'ui' | 'common_server' | 'server'
   layer: 'frontend' | 'backend'
   title: string
+  /** 화면 · / 서버 · <영역> 묶음의 업무 영역 (공통 묶음은 null) */
+  area: WorkArea | null
   summary: string
   functions: string[]
   files: string[]
@@ -694,8 +709,12 @@ export interface WorkItem {
   history: { at: string; by: { id: number; name: string }; what: string }[]
 }
 
+export interface WorkArea { id: string; name: string; menus: { group: string; name: string }[] }
+
 export interface WorkOverview {
   items: WorkItem[]
+  /** 영역마다 화면 묶음·서버 묶음 키 */
+  areas: (WorkArea & { screen: string | null; server: string | null })[]
   counts: Record<WorkStatus, number>
   people: { id: number; name: string; total: number; done: number; review: number }[]
   developers: { id: number; name: string }[]
@@ -713,6 +732,13 @@ export async function getWorkItem(project: string, key: string): Promise<{ item:
 
 export async function assignWork(project: string, key: string, user_id: number): Promise<WorkItem> {
   return (await (await post('/develop/work/assign', { project, key, user_id })).json()) as WorkItem
+}
+
+export interface AssignManyResult { results: { key: string; ok: boolean; title?: string; error?: string }[]; assigned: number; failed: number }
+
+/** 여러 묶음을 한 사람에게 (묶음마다 결과, 하나가 실패해도 나머지는 배정) */
+export async function assignMany(project: string, keys: string[], user_id: number): Promise<AssignManyResult> {
+  return (await (await post('/develop/work/assign-many', { project, keys, user_id })).json()) as AssignManyResult
 }
 
 export async function submitWork(project: string, key: string, note = ''): Promise<WorkItem> {
