@@ -168,6 +168,14 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
           ))}
         </span>
         {manage && (
+          <span className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" title="보이는 줄의 화면 묶음을 모두 고릅니다 (프론트 담당)"
+              onClick={() => toggle(rows.map((r) => r.cells[0]).filter((c): c is WorkItem => selectable(c) && c!.kind === 'ui').map((c) => c.key), true)}>화면 전체 고르기</Button>
+            <Button size="sm" variant="ghost" title="보이는 줄의 서버 묶음을 모두 고릅니다 (백엔드 담당)"
+              onClick={() => toggle(rows.map((r) => r.cells[1]).filter((c): c is WorkItem => selectable(c) && c!.kind === 'server').map((c) => c.key), true)}>서버 전체 고르기</Button>
+          </span>
+        )}
+        {manage && (
           <span className="ml-auto flex flex-wrap items-center gap-1.5">
             <span className="text-fg-3">고른 묶음 {pickedItems.length}개를</span>
             <select aria-label="한꺼번에 배정할 담당자" value={target || ''} onChange={(e) => setTarget(Number(e.target.value))}
@@ -188,16 +196,35 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
         </div>
         <ul className="divide-y divide-line">
           {rows.map((r) => {
-            const keys = r.cells.filter((c): c is WorkItem => selectable(c)).map((c) => c.key)
-            const all = keys.length > 0 && keys.every((k) => picked.has(k))
+            // 화면 / 서버 / 모두 선택: 누르면 이 줄은 그것만 고른 상태가 되고, 켜진 것을 다시 누르면 해제
+            const [front, back] = r.cells.map((c) => (selectable(c) ? c!.key : null))
+            const f = Boolean(front && picked.has(front))
+            const b = Boolean(back && picked.has(back))
+            const choices: { label: string; keys: string[]; on: boolean }[] = [
+              { label: '화면', keys: front ? [front] : [], on: f && !b },
+              { label: '서버', keys: back ? [back] : [], on: b && !f },
+              { label: '모두 선택', keys: front && back ? [front, back] : [], on: f && b },
+            ]
+            const on = (keys: string[]) => choices.find((c) => c.keys === keys)!.on
             return (
               <li key={r.id} className="grid gap-2 px-3 py-2 md:grid-cols-[minmax(9rem,1fr)_2fr_2fr]">
                 <div className="min-w-0">
-                  <label className="flex items-start gap-1.5 text-label font-semibold">
-                    {manage && <input type="checkbox" className="mt-1" aria-label={`${r.name} 화면·서버 함께 고르기`} disabled={!keys.length} checked={all} onChange={(e) => toggle(keys, e.target.checked)} />}
-                    <span className="min-w-0 break-keep">{r.name}</span>
-                  </label>
+                  <p className="text-label font-semibold break-keep">{r.name}</p>
                   <p className="mt-0.5 line-clamp-3 text-micro text-fg-3" title={r.note}>{r.note}</p>
+                  {manage && (
+                    <span role="group" aria-label={`${r.name} 고르기`} className="mt-1.5 inline-flex overflow-hidden rounded-md border border-line text-micro">
+                      {choices.map((c) => (
+                        <button key={c.label} type="button" aria-pressed={on(c.keys)} disabled={!c.keys.length}
+                          title={c.keys.length ? `${r.name}의 ${c.label === '모두 선택' ? '화면·서버' : c.label} 묶음을 고릅니다 (다시 누르면 해제)` : '고를 수 있는 묶음이 없습니다 (승인 대기 중이거나 파일 없음)'}
+                          onClick={() => {
+                            const all = [front, back].filter((k): k is string => Boolean(k))
+                            if (on(c.keys)) toggle(c.keys, false)
+                            else { toggle(all, false); toggle(c.keys, true) }
+                          }}
+                          className={cx('px-2 py-0.5 disabled:opacity-40', on(c.keys) ? 'bg-primary text-on-primary' : 'hover:bg-sunken')}>{c.label}</button>
+                      ))}
+                    </span>
+                  )}
                 </div>
                 {cell(r.cells[0], r.id === '_common' ? '공통 화면 틀' : '화면')}
                 {cell(r.cells[1], r.id === '_common' ? '공통 서버·DB' : '서버')}
@@ -207,7 +234,7 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
           {rows.length === 0 && <li className="px-3 py-4 text-small text-fg-3">이 보기에 해당하는 묶음이 없습니다.</li>}
         </ul>
       </div>
-      <p className="text-micro text-fg-3">업무 영역은 아래 '화면 구성'에서 묶습니다 (비슷한 메뉴끼리 · AI 제안 가능). 영역 줄의 칸을 고르면 화면·서버를 함께 고릅니다.</p>
+      <p className="text-micro text-fg-3">업무 영역은 위 '화면 구성 · 업무 영역'에서 묶습니다 (비슷한 메뉴끼리 · AI 제안 가능). 영역마다 화면·서버·모두 선택 중에 고르거나 칸의 체크로 하나씩 고릅니다. '화면 전체'·'서버 전체'로 프론트·백엔드 담당에게 나눠 맡길 수 있습니다.</p>
       {!manage && <p className="text-micro text-fg-3">{NEEDS.develop} (배정·승인·반려)</p>}
       {dialog && 'brief' in dialog && <BriefDialog project={project} item={dialog.brief} onClose={() => setDialog(null)} />}
       {dialog && 'submit' in dialog && (
