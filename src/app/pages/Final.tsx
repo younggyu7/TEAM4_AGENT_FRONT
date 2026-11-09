@@ -1,5 +1,5 @@
 import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { decideFinal, fillDevSpec, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
@@ -13,7 +13,7 @@ import { relationsOf } from '../lib/erd'
 import { FullErd } from './Erd'
 
 // 최종 산출물: 최종본(v<ERD>.1)에 저장된 결과를 보여주기만 한다 (고치는 단계가 아님 — 바꾸려면 ERD 화면에서 새 버전)
-export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, canFill, onDecided, previous }: {
+export function FinalView({ design, project, version, record, finalized, onOpenEntity, onOpenDevSpec, review, canDecide, canFill, onDecided, previous, developAction }: {
   design: Design
   project: string
   version: string
@@ -31,6 +31,8 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
   onDecided: () => void
   /** 이 최종본보다 먼저 받은 수정 지시 (그 처리 결과를 보고 승인한다) */
   previous?: VersionRecord
+  /** 최종 승인한 최종본이면 결정 카드에 둘 '최종 개발하기' (다음 단계로 바로 넘어가게) */
+  developAction?: ReactNode
 }) {
   // 최종본은 확정한 ERD 아래 번호(v2.1 → v2.1.1). 아직 없으면 ERD 버전을 미리 보기로 보여준다
   const isFinal = record?.stage === 'final' || version.split('.').length === 3
@@ -75,7 +77,7 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
       </Card>
 
       {isFinal && record && previous?.approval && !record.approval && <PreviousDirective record={previous} />}
-      {isFinal && record && <DecisionCard project={project} version={version} record={record} design={design} canDecide={canDecide} onDecided={onDecided} />}
+      {isFinal && record && <DecisionCard project={project} version={version} record={record} design={design} canDecide={canDecide} onDecided={onDecided} developAction={developAction} />}
 
       <RemarksCard remarks={remarks} isFinal={isFinal} onOpen={onOpenEntity} entities={new Set(entities.map((e) => e.entity_id))} />
 
@@ -104,9 +106,10 @@ const decisionText = (a: Approval) => a.decision === 'approve' ? '승인'
  * 최종 결정: 최종본을 승인하거나, 고칠 내용과 함께 기능 명세·ERD 단계로 돌려보낸다 (POST /projects/approval).
  * 수정 지시는 두 단계를 함께 고를 수 있고, 최종본의 기능·테이블을 골라 항목마다 메모를 남긴다 (항목만 골라도 그 단계로).
  * 돌려보낸 지시는 그 단계 화면 위에 보이고, 개발자가 고쳐 새 버전 → 다시 최종 확정한다. 기록은 버전 기록에 쌓인다.
+ * 승인한 뒤에는 '승인 거두고 수정 지시' 옆에 '최종 개발하기'(developAction)를 두어 바로 다음 단계로 넘어간다.
  */
-function DecisionCard({ project, version, record, design, canDecide, onDecided }: {
-  project: string; version: string; record: VersionRecord; design: Design; canDecide: boolean; onDecided: () => void
+function DecisionCard({ project, version, record, design, canDecide, onDecided, developAction }: {
+  project: string; version: string; record: VersionRecord; design: Design; canDecide: boolean; onDecided: () => void; developAction?: ReactNode
 }) {
   const [mode, setMode] = useState<'idle' | 'changes'>('idle')
   const [stages, setStages] = useState<{ spec: boolean; erd: boolean }>({ spec: false, erd: false })
@@ -168,13 +171,17 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided }
             ))}
           </ul>
         )}
-        {canDecide && mode === 'idle' && (
-          <div className="flex flex-wrap gap-2">
-            {!approved && <Button variant="ok" icon={<SealCheck />} disabled={sending} onClick={() => void send('approve')}>최종 승인</Button>}
-            <Button icon={<ArrowBendUpLeft />} disabled={sending} onClick={() => setMode('changes')}
-              title={approved ? '승인을 거두고 고칠 내용과 함께 돌려보냅니다' : undefined}>
-              {approved ? '승인 거두고 수정 지시' : '수정 지시'}
-            </Button>
+        {mode === 'idle' && (canDecide || (approved && developAction)) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {canDecide && !approved && <Button variant="ok" icon={<SealCheck />} disabled={sending} onClick={() => void send('approve')}>최종 승인</Button>}
+            {canDecide && (
+              <Button icon={<ArrowBendUpLeft />} disabled={sending} onClick={() => setMode('changes')}
+                title={approved ? '승인을 거두고 고칠 내용과 함께 돌려보냅니다' : undefined}>
+                {approved ? '승인 거두고 수정 지시' : '수정 지시'}
+              </Button>
+            )}
+            {/* 다음 단계: 승인한 최종본으로 최종 개발하기 (산출물 보기 제목 옆과 같은 버튼·예상 확인 창) */}
+            {approved && developAction}
           </div>
         )}
         {canDecide && mode === 'changes' && (
