@@ -108,7 +108,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
           <span className="flex flex-wrap items-center gap-3">
             최종 개발물
             <Button variant="ok" icon={<Play weight="fill" />} disabled={!openUrl}
-              title={!developed ? "산출물 보기에서 '최종 개발하기'를 먼저 하세요"
+              title={!developed ? "개발 범위 확정(최종 산출물)이나 산출물 보기에서 '최종 개발하기'를 먼저 하세요"
                 : step === '1' ? '새 탭에서 예시 데이터 화면을 엽니다 (서버·DB 없이)'
                 : '새 탭에서 실행 미리보기를 켜고(처음엔 빌드로 몇 분) 앱 화면을 엽니다'}
               onClick={() => openUrl && window.open(openUrl, '_blank', 'noopener')}>
@@ -158,7 +158,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
               <span className="flex flex-wrap items-center gap-2">
                 <Badge tone={developing ? 'info' : 'warn'}>{developing ? '개발 중' : '개발 대기'}</Badge>
                 {!developing && <>
-                  <span className="text-fg-2">산출물 보기에서 '최종 개발하기'를 누르면 코드를 만듭니다 (개발자).</span>
+                  <span className="text-fg-2">개발 범위 확정(최종 산출물)의 결정 카드나 산출물 보기에서 '최종 개발하기'를 누르면 코드를 만듭니다 (개발자).</span>
                   <Button size="sm" icon={<ArrowRight />} onClick={onOpenDocs}>산출물 보기</Button>
                 </>}
               </span>

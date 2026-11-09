@@ -20,6 +20,7 @@ import { resumeJob, startReviewJob, useJob } from '../lib/jobs'
 import { directiveItems, erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
 import { isDocPage, PAGE_LABEL, type Page, type Route } from '../lib/route'
 import { StackNote } from '../components/StackChoice'
+import { DevelopActions } from '../components/DevelopActions'
 import { DevelopView } from './Develop'
 import { DocsView } from './Docs'
 import { ErdEditor } from './Erd'
@@ -205,6 +206,10 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
             onOpenEntity={(id) => open('erd', id)} onOpenDevSpec={(name) => open('dev-spec', name)}
             review={reviewJob && [reviewJob.base, reviewJob.new_version].includes(route.version) ? reviewJob : undefined}
             canDecide={perm.final} canFill={perm.erdConfirm} onDecided={shell.onReloadProjects}
+            developAction={record?.stage === 'final' && record.approval?.decision === 'approve'
+              ? <DevelopActions project={route.project} record={record} user={shell.user} onFinished={shell.onReloadProjects}
+                  onStarted={() => open('develop', '1')} />
+              : undefined}
             previous={versions.filter((v) => v.stage === 'final' && v.design_version !== route.version && v.approval?.decision === 'changes'
               && v.approval.at < (record?.created_at ?? '')).sort((a, b) => b.approval!.at.localeCompare(a.approval!.at))[0]} />
         : route.page === 'develop'
