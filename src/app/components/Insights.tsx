@@ -9,7 +9,7 @@ import type { EditPage, Page } from '../lib/route'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
 import { OPEN_CODE_FILE } from './CodeBrowser'
 import { MembersCard } from './MembersCard'
-import { ExtensionCard } from './MyWork'
+import { AccessTokenCard, ExtensionCard } from './MyWork'
 import { RepoCard } from './RepoCard'
 import { can, type User } from '../lib/session'
 import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
@@ -337,6 +337,7 @@ export function HomeInsights({ projects }: { projects: Project[] }) {
           {recent.length === 0 && <li className="text-small text-fg-3">아직 생성된 버전이 없습니다.</li>}
         </ol>
       </Card>
+      <AccessTokenCard />
     </>
   )
 }

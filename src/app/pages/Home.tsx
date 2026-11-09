@@ -2,7 +2,7 @@ import { ArrowRight, FileText, SlackLogo, TreeStructure, UploadSimple, Warning }
 import { useEffect, useId, useMemo, useState } from 'react'
 import { getLlmOptions, listPickMembers, type LlmOptions, type PickMember, type SlackConnected } from '../../api'
 import { NoticeItem, useNotices } from '../components/Notices'
-import { MyWorkCard, TokenCard } from '../components/MyWork'
+import { MyWorkCard } from '../components/MyWork'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
 import { HomeInsights } from '../components/Insights'
@@ -127,7 +127,6 @@ export function Home({ shell }: { shell: ShellBase }) {
             </div>
           </Card>
 
-          <TokenCard />
           <NewRunCard canUpload={can(user, 'upload')} meId={user.id} onFinished={onReload} onOpen={(project, version) => navigate({ name: 'workspace', project, version, page: 'spec' })} />
         </div>
     </Shell>
