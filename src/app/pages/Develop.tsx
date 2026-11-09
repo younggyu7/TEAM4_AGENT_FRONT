@@ -1,6 +1,6 @@
 import { ArrowRight, Check, CircleNotch, Copy, GitBranch, Play, Stop } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { apiUrl, appUrl, getGitSettings, getPreviewAccounts, getPreviewStatus, getRepo, previewUrl, stopPreview, type GitSettings, type Job, type PreviewAccount, type PreviewStatus, type RepoBranch } from '../../api'
+import { apiUrl, appUrl, deleteGitSettings, getGitSettings, getPreviewAccounts, getPreviewStatus, getRepo, previewUrl, stopPreview, type GitSettings, type Job, type PreviewAccount, type PreviewStatus, type RepoBranch } from '../../api'
 import { formatDate } from '../../labels'
 import { startCheckJob } from '../lib/jobs'
 import { shortModel } from '../lib/pricing'
@@ -10,7 +10,7 @@ import { CodeBrowser, OPEN_CODE_FILE } from '../components/CodeBrowser'
 import { JobPanel } from '../components/JobPanel'
 import { PreviewTerminal } from '../components/PreviewTerminal'
 import { LayoutEditor, WorkBundles } from '../components/WorkBundles'
-import { useRepoBranch, useRepoVersion } from '../lib/repo'
+import { repoChanged, useRepoBranch, useRepoVersion } from '../lib/repo'
 import { can, NEEDS, type User } from '../lib/session'
 import { Badge, Button, Card, CardHeader, cx, ErrorNote } from '../components/ui'
 
@@ -44,7 +44,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
 }) {
   const [run, setRun] = useState<PreviewStatus | null>(null)
   const [error, setError] = useState('')
-  const [gitOpen, setGitOpen] = useState(false)
+  const [gitOpen, setGitOpen] = useState<null | 'push' | 'edit'>(null)
   const [checkError, setCheckError] = useState('')
   const [layoutSaved, setLayoutSaved] = useState(0)   // 화면 구성을 저장하면 작업 묶음을 바로 다시 읽는다 (영역이 바뀌므로)
   const [branch, setBranch] = useRepoBranch(project)
@@ -240,7 +240,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
           {developed && (
             <Row label="자동 확인" id="develop-check">
               {developed.check === undefined ? <span className="text-fg-3">기록 없음 — 아래 '다시 확인'으로 검사하세요</span>
-                : developed.check === null && developed.request ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — gen → dev 합치기 요청 #{developed.request}을 승인한 뒤 2단계에서 실행해 확인하세요</span>
+                : developed.check === null && developed.branch ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — 새 브랜치 {developed.branch}에 있고 dev는 그대로입니다. 작업 묶음에서 이 브랜치를 골라 보낼 수 있습니다</span>
                 : developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
                 : !developed.check.counts ? <span className="text-danger">{developed.check.message}</span>
                 : (
@@ -296,9 +296,17 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
               )}
               <Button variant={remote?.ahead ? 'ok' : 'secondary'} icon={<GitBranch />} disabled={!allowed || !developed || job?.status === 'running'}
                 title={!allowed ? NEEDS.develop : !developed ? '1단계 개발을 먼저 하세요' : '코드 저장소의 dev(테스트 배포)나 main(릴리스)과 태그를 원격에 올립니다 (처음엔 원격 설정)'}
-                onClick={() => setGitOpen(true)}>
+                onClick={() => setGitOpen('push')}>
                 원격 설정 · 올리기
               </Button>
+              {remote?.url && <span className="ml-1.5 inline-flex gap-1.5">
+                <Button variant="ghost" disabled={!allowed || job?.status === 'running'} onClick={() => setGitOpen('edit')}>원격 수정</Button>
+                <Button variant="ghost" disabled={!allowed || job?.status === 'running'} title="원격 설정만 지웁니다. 코드와 원격 저장소의 내용은 그대로입니다"
+                  onClick={() => {
+                    if (!window.confirm(`원격 설정을 지울까요?\n${remote.url}\n코드와 원격 저장소의 내용은 그대로이고, 다시 올리려면 주소와 토큰을 새로 적어야 합니다.`)) return
+                    deleteGitSettings(project).then(() => repoChanged()).catch((e) => window.alert((e as Error).message))
+                  }}>원격 삭제</Button>
+              </span>}
             </div>
           </Row>
           <Row label="저장소 구성">
@@ -308,7 +316,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
           </Row>
         </dl>
       )}
-      {gitOpen && <GitDialog project={project} version={record.design_version} onClose={() => setGitOpen(false)} onFinished={onFinished} />}
+      {gitOpen && <GitDialog project={project} version={record.design_version} edit={gitOpen === 'edit'} onClose={() => { setGitOpen(null); repoChanged() }} onFinished={onFinished} />}
     </Card>
   )
 }

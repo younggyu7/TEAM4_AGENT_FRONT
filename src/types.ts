@@ -177,6 +177,8 @@ export interface VersionRecord {
     commit?: string | null
     /** 다시 개발했을 때 낸 gen → dev 합치기 요청 ID */
     request?: number | null
+    /** 다시 개발해 만든 새 브랜치 */
+    branch?: string | null
     usage?: { calls: number; input: number; output: number; model: string; effort: string; mode: 'build' | 'logic' | 'none' }
     /** 기능별 구현 방식과 고객 답 대기 규칙 */
     summary?: { functions: number; with_api: number; ai: string[]; failed: string[]; template: string[]; todo_count: number

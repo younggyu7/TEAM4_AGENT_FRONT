@@ -126,7 +126,7 @@ export function RepoCard({ project, version, user }: { project: string; version:
           <GitBranch size={14} className="shrink-0 text-fg-3" aria-hidden="true" />
           <select aria-label="브랜치" value={current?.name} onChange={(e) => setBranch(e.target.value)}
             className="min-h-8 min-w-0 flex-1 rounded-md border border-control bg-card px-2 text-small text-fg">
-            {repo.branches.map((b) => <option key={b.name} value={b.name}>{b.name}{b.protected ? ' (보호)' : b.owner ? ` · ${b.owner.name}` : ''}</option>)}
+            {repo.branches.filter((b) => b.name !== 'gen' || b.name === branch).map((b) => <option key={b.name} value={b.name}>{b.name}{b.protected ? ' (보호)' : b.owner ? ` · ${b.owner.name}` : ''}</option>)}
           </select>
         </div>
         {current && (
@@ -152,7 +152,7 @@ export function RepoCard({ project, version, user }: { project: string; version:
               onClick={() => setDialog('request')}>합치기 요청</Button>
             <Button size="sm" variant="ghost" icon={<ArrowDown />} disabled={!write || busy || !current.behind || current.changes > 0}
               title={!write ? NEEDS.repo_write : current.changes > 0 ? '먼저 저장하기를 하세요' : current.behind ? 'dev의 새 커밋을 이 브랜치에 합칩니다' : 'dev의 최신 내용이 이미 있습니다'}
-              onClick={() => void act(async () => (await updateBranch(project, current.name)).message)}>메인 가져오기</Button>
+              onClick={() => void act(async () => (await updateBranch(project, current.name)).message)}>기준 브랜치 가져오기</Button>
             {mine && write && (
               <Button size="sm" variant="ghost" icon={<Trash />} disabled={busy || Boolean(current.request)} title={current.request ? '열린 합치기 요청이 있어 지우지 않습니다' : '브랜치와 작업 폴더를 지웁니다'}
                 onClick={() => { if (window.confirm(`${current.name} 브랜치를 지울까요? 저장하지 않은 변경도 사라집니다.`)) void act(async () => { await deleteBranch(project, current.name); setBranch('dev'); return '브랜치를 지웠습니다.' }) }}>지우기</Button>
@@ -168,9 +168,9 @@ export function RepoCard({ project, version, user }: { project: string; version:
               {open.map((r) => (
                 <li key={r.id} className="rounded-md border border-line px-2.5 py-2">
                   <p className="flex flex-wrap items-center gap-1.5"><GitMerge size={13} className="text-info" aria-hidden="true" />
-                    <code className="text-micro">{r.branch}</code>{r.generated && <Badge tone="info">AI 재생성</Badge>}<span className="text-fg-3">{r.by.name} · {formatDate(r.at)}</span></p>
+                    <code className="text-micro">{r.branch} → {r.target ?? 'dev'}</code>{r.generated && <Badge tone="info">AI 재생성</Badge>}<span className="text-fg-3">{r.by.name} · {formatDate(r.at)}</span></p>
                   {r.note && <p className="mt-0.5 text-fg-2">{r.note}</p>}
-                  {r.conflicts.length > 0 && <p className="mt-0.5 text-micro text-danger">충돌: {r.conflicts.join(', ')} — {r.generated ? 'AI가 바꾼 파일을 사람도 고쳤습니다. 반려한 뒤 그 파일은 사람이 맞추세요' : "요청한 사람이 'dev 가져오기'로 풀어야 합니다"}</p>}
+                  {r.conflicts.length > 0 && <p className="mt-0.5 text-micro text-danger">충돌: {r.conflicts.join(', ')} — {r.generated ? 'AI가 바꾼 파일을 사람도 고쳤습니다. 반려한 뒤 그 파일은 사람이 맞추세요' : "요청한 사람이 '기준 브랜치 가져오기'로 풀어야 합니다"}</p>}
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     <Button size="sm" variant="ghost" onClick={() => setDialog({ diff: r })}>차이 보기</Button>
                     {head && <>
@@ -337,7 +337,7 @@ function BranchDiffDialog({ project, request, onClose }: { project: string; requ
   const [error, setError] = useState('')
   useEffect(() => { getBranchDiff(project, request.branch).then(setDiff).catch((e) => setError((e as Error).message)) }, [project, request.branch])
   return (
-    <Modal wide title={`차이 보기 · dev ← ${request.branch}`} onClose={onClose}>
+    <Modal wide title={`차이 보기 · ${request.target ?? 'dev'} ← ${request.branch}`} onClose={onClose}>
       {error && <p role="alert" className="text-danger">{error}</p>}
       {!diff && !error && <Loading label="차이를 읽는 중" lines={4} />}
       {diff && <>

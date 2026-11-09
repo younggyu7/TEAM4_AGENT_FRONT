@@ -42,7 +42,7 @@ export async function startReviewJob(project: string, version: string, dispositi
 }
 
 /** 최종 개발하기: 승인한 최종본 → 코드 + 미리보기 화면 (logic이면 업무 로직 빈칸도 AI가 채움) */
-export async function startDevelopJob(project: string, version: string, ai: { build: boolean; logic?: boolean; model?: string; effort?: string; theme?: string },
+export async function startDevelopJob(project: string, version: string, ai: { build: boolean; logic?: boolean; model?: string; effort?: string; theme?: string; layout?: string },
   onFinish: (job: Job) => void): Promise<void> {
   track(await startDevelop(project, version, ai), onFinish)
 }

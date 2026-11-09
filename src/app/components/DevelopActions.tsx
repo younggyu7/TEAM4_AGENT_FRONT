@@ -1,6 +1,6 @@
 import { Code, GitBranch, X } from '@phosphor-icons/react'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { checkRemote, getDevelopPlan, getGitSettings, getLlmOptions, getThemes, saveGitSettings, type DevelopPlan, type GitSettings, type LlmOptions, type ThemeChoice } from '../../api'
+import { checkRemote, getDevelopPlan, getGitSettings, getLlmOptions, getThemes, saveGitSettings, type DevelopPlan, type GitSettings, type LlmOptions, type LayoutChoice, type ThemeChoice } from '../../api'
 import { formatDate } from '../../labels'
 import type { VersionRecord } from '../../types'
 import { startDevelopJob, startGitJob } from '../lib/jobs'
@@ -63,11 +63,19 @@ function DevelopDialog({ project, version, onClose, onFinished, onStarted }: { p
   const [mode, setMode] = useState<'build' | 'logic' | 'none'>('build')
   const [themes, setThemes] = useState<ThemeChoice[]>([])
   const [theme, setTheme] = useState('')
+  const [layouts, setLayouts] = useState<LayoutChoice[]>([])
+  const [layout, setLayout] = useState('')
+  const [savedLayout, setSavedLayout] = useState('')
   const [model, setModel] = useState('')
   const [effort, setEffort] = useState('medium')
   const [sending, setSending] = useState(false)
   useEffect(() => { getDevelopPlan(project, version).then(setPlan).catch((e) => setError((e as Error).message)) }, [project, version])
-  useEffect(() => { getThemes().then((t) => { setThemes(t.themes); setTheme((x) => x || t.default) }).catch(() => setThemes([])) }, [])
+  useEffect(() => {
+    getThemes(project).then((t) => {
+      setThemes(t.themes); setTheme((x) => x || t.current.theme || t.default)
+      setLayouts(t.layouts); setLayout((x) => x || t.current.layout || t.layouts[0]?.id || ''); setSavedLayout(t.current.layout)
+    }).catch(() => setThemes([]))
+  }, [project])
   useEffect(() => {
     getLlmOptions().then((o) => {
       setOptions(o)
@@ -79,7 +87,7 @@ function DevelopDialog({ project, version, onClose, onFinished, onStarted }: { p
     setSending(true)
     try {
       const ai = mode === 'none' ? {} : { model, effort: picked?.effort === false ? '' : effort }
-      await startDevelopJob(project, version, { build: mode === 'build', logic: mode === 'logic', ...ai, ...(mode === 'build' && theme ? { theme } : {}) }, onFinished)
+      await startDevelopJob(project, version, { build: mode === 'build', logic: mode === 'logic', ...ai, ...(theme ? { theme } : {}), ...(layout ? { layout } : {}) }, onFinished)
       onClose()
       onStarted?.()
     } catch (e) {
@@ -160,7 +168,8 @@ function DevelopDialog({ project, version, onClose, onFinished, onStarted }: { p
                       : '새로 구현할 기능이 없습니다 (같은 스펙으로 만든 결과를 그대로 씀, 0원).'}
                   </p>
                 )}
-                {build && themes.length > 0 && <ThemePicker themes={themes} value={theme} onChange={setTheme} />}
+                {themes.length > 0 && <ThemePicker themes={themes} value={theme} onChange={setTheme} layouts={layouts} layout={layout} onLayout={setLayout} />}
+                {build && layout && layout !== savedLayout && <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-small text-warn">형태를 바꾸면 화면 설계 기준이 달라져 위 예상과 달리 기능 전체를 다시 만듭니다. 색만 바꾸면 비용이 들지 않습니다.</p>}
                 {build && est?.scratch && (
                   <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-small text-warn">
                     개발 틀이 없는 {est.scratch.layers.map((l) => (l === 'backend' ? '서버' : '화면')).join('·')}을(를) AI가 뼈대부터 만듭니다 (위 예상에 포함: 뼈대 {est.scratch.skeletons}개 + 기능 파일 {est.scratch.functions}개).
@@ -185,36 +194,72 @@ function DevelopDialog({ project, version, onClose, onFinished, onStarted }: { p
   )
 }
 
-/** 개발한 앱의 화면 스타일 (최대 9개): 작은 미리보기(메뉴·강조 버튼·배경)로 고른다. 색 토큰만 바꾸므로 AI가 짠 화면도 같이 바뀐다 */
-function ThemePicker({ themes, value, onChange }: { themes: ThemeChoice[]; value: string; onChange: (id: string) => void }) {
+/** 개발한 앱의 화면: 형태 3가지(배치·밀도·모서리, 작은 그림으로 고름) × 색(동그라미). 고른 조합은 앱의 spec/DESIGN.md가 된다 */
+function ThemePicker({ themes, value, onChange, layouts, layout, onLayout }: { themes: ThemeChoice[]; value: string; onChange: (id: string) => void; layouts: LayoutChoice[]; layout: string; onLayout: (id: string) => void }) {
+  const color = themes.find((t) => t.id === value)
+  const ink = color?.preview.accent ?? 'currentColor'
   return (
-    <fieldset>
-      <legend className="mb-1.5 text-small font-medium">앱 화면 스타일</legend>
-      <div className="grid grid-cols-3 gap-1.5">
-        {themes.slice(0, 9).map((t) => (
-          <button key={t.id} type="button" aria-pressed={value === t.id} title={t.note} onClick={() => onChange(t.id)}
-            className={cx('overflow-hidden rounded-md border text-left', value === t.id ? 'border-fg ring-2 ring-fg/20' : 'border-line hover:border-control')}>
-            <span aria-hidden="true" className="flex h-12" style={{ background: t.preview.bg }}>
-              <span className="flex w-1/3 flex-col gap-1 p-1.5" style={{ background: t.preview.side }}>
-                <span className="h-1.5 w-3/4 rounded-sm" style={{ background: t.preview.mark }} />
-                <span className="h-1 w-full rounded-sm opacity-60" style={{ background: t.preview.side_ink }} />
-                <span className="h-1 w-2/3 rounded-sm opacity-60" style={{ background: t.preview.side_ink }} />
-              </span>
-              <span className="flex flex-1 flex-col justify-between p-1.5">
-                <span className="h-1.5 w-2/3 rounded-sm" style={{ background: t.preview.cover, opacity: 0.35 }} />
-                <span className="h-2.5 w-8 rounded-sm" style={{ background: t.preview.accent }} />
-              </span>
-            </span>
-            <span className="block truncate px-1.5 py-1 text-micro font-medium">{t.name}</span>
-          </button>
-        ))}
-      </div>
-    </fieldset>
+    <div className="space-y-3">
+      <fieldset>
+        <legend className="mb-1.5 text-small font-medium">앱 화면 형태</legend>
+        <div className="grid grid-cols-3 gap-1.5">
+          {layouts.map((l) => (
+            <button key={l.id} type="button" aria-pressed={layout === l.id} title={l.note} onClick={() => onLayout(l.id)}
+              className={cx('overflow-hidden rounded-md border text-left', layout === l.id ? 'border-fg ring-2 ring-fg/20' : 'border-line hover:border-control')}>
+              <LayoutSketch id={l.id} ink={ink} />
+              <span className="block truncate px-1.5 pt-1 text-micro font-medium">{l.name}</span>
+              <span className="block truncate px-1.5 pb-1 text-micro text-fg-3">{l.note}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend className="mb-1.5 text-small font-medium">색상 <span className="font-normal text-fg-3">{color?.name}</span></legend>
+        <div className="flex flex-wrap gap-2">
+          {themes.map((t) => (
+            <button key={t.id} type="button" aria-pressed={value === t.id} aria-label={t.name} title={`${t.name} — ${t.note}`} onClick={() => onChange(t.id)}
+              className={cx('size-8 rounded-full border border-line p-0', value === t.id && 'ring-2 ring-fg ring-offset-2 ring-offset-card')}
+              style={{ background: `linear-gradient(135deg, ${t.preview.side} 50%, ${t.preview.accent} 50%)` }} />
+          ))}
+        </div>
+      </fieldset>
+    </div>
+  )
+}
+
+/** 형태 미리보기: 칸 배치를 작은 그림으로 */
+function LayoutSketch({ id, ink }: { id: string; ink: string }) {
+  const block = 'bg-sunken'
+  return (
+    <span aria-hidden="true" className="block h-16 bg-card p-1.5">
+      {id === 'bento' ? (
+        <span className="grid h-full grid-cols-3 grid-rows-2 gap-1">
+          <span className="rounded-md" style={{ background: ink }} />
+          <span className={cx('rounded-md', block)} />
+          <span className={cx('row-span-2 rounded-md', block)} />
+          <span className={cx('col-span-2 rounded-md', block)} />
+        </span>
+      ) : id === 'compact' ? (
+        <span className="grid h-full grid-cols-[3fr_2fr] gap-1">
+          <span className="flex flex-col justify-between">
+            {[0, 1, 2, 3, 4, 5].map((n) => <span key={n} className={cx('h-1 rounded-[1px]', block)} style={n === 1 ? { background: ink } : undefined} />)}
+          </span>
+          <span className={cx('rounded-[2px]', block)} />
+        </span>
+      ) : (
+        <span className="flex h-full flex-col justify-center gap-1.5">
+          <span className="h-2.5 w-3/4" style={{ background: ink }} />
+          <span className={cx('h-px w-full', 'bg-line-strong')} />
+          <span className={cx('h-1 w-full', block)} />
+          <span className={cx('h-1 w-2/3', block)} />
+        </span>
+      )}
+    </span>
   )
 }
 
 /** 최종 개발물 3단계 '원격 설정 · 올리기': 원격 하나 (화면·백엔드·DB 한 저장소). 토큰은 서버에 암호화, 다시 보이지 않음 */
-export function GitDialog({ project, version, onClose, onFinished }: { project: string; version: string; onClose: () => void; onFinished: () => void }) {
+export function GitDialog({ project, version, onClose, onFinished, edit = false }: { project: string; version: string; onClose: () => void; onFinished: () => void; edit?: boolean }) {
   const [saved, setSaved] = useState<GitSettings | null>(null)
   const [form, setForm] = useState({ url: '', branch: '', token: '' })
   const [editing, setEditing] = useState(false)
@@ -225,9 +270,9 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
     getGitSettings(project).then((g) => {
       setSaved(g)
       setForm({ url: g.url, branch: g.branch, token: '' })
-      setEditing(!g.url)   // 처음 올릴 때는 설정부터
+      setEditing(edit || !g.url)   // 처음 올릴 때는 설정부터
     }).catch((e) => setError((e as Error).message))
-  }, [project])
+  }, [project, edit])
   const set = (k: 'url' | 'branch' | 'token') => (e: { target: { value: string } }) => setForm((f) => ({ ...f, [k]: e.target.value }))
   const save = async () => {
     setSending(true)
@@ -263,6 +308,7 @@ export function GitDialog({ project, version, onClose, onFinished }: { project: 
       {error && <p role="alert" className="text-danger">{error}</p>}
       {saved && editing && (
         <>
+          <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-small text-warn">이 프로젝트 전용 빈 저장소 주소를 적으세요. 다른 프로젝트의 저장소에는 올라가지 않습니다.</p>
           <p className="text-small text-fg-3">이 프로젝트의 원격 저장소 하나를 적습니다 (화면·백엔드·DB를 한 저장소에). 올릴 때 <code>dev</code>·<code>main</code> 중 고른 브랜치를 같은 이름으로 올립니다. 토큰은 서버에 암호화해 두고 다시 보여 주지 않습니다 (비우면 저장된 토큰 그대로).</p>
           <div><Label htmlFor={`${id}-u`}>주소</Label>
             <TextInput dense id={`${id}-u`} placeholder="https://github.com/팀/저장소.git" value={form.url} onChange={set('url')} /></div>

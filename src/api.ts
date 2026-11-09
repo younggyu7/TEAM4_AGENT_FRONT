@@ -128,13 +128,16 @@ export async function getDevelopPlan(project: string, version: string): Promise<
 export interface ThemeChoice { id: string; name: string; note: string
   preview: { bg: string; side: string; side_ink: string; accent: string; accent_ink: string; cover: string; mark: string } }
 
-export async function getThemes(): Promise<{ themes: ThemeChoice[]; default: string }> {
-  return (await (await request('/develop/themes')).json()) as { themes: ThemeChoice[]; default: string }
+export interface LayoutChoice { id: string; name: string; note: string }
+export interface ThemeOptions { themes: ThemeChoice[]; default: string; layouts: LayoutChoice[]; current: { theme: string; layout: string } }
+
+export async function getThemes(project: string): Promise<ThemeOptions> {
+  return (await (await request(`/develop/themes?project=${encodeURIComponent(project)}`)).json()) as ThemeOptions
 }
 
-/** build: 기능 전체 AI · logic: 빈 로직만 AI · 둘 다 false: AI 안 씀. theme: 화면 스타일 */
+/** build: 기능 전체 AI · logic: 빈 로직만 AI · 둘 다 false: AI 안 씀. theme·layout: 화면 색·형태 */
 export async function startDevelop(project: string, version: string,
-  ai: { build: boolean; logic?: boolean; model?: string; effort?: string; theme?: string }): Promise<Job> {
+  ai: { build: boolean; logic?: boolean; model?: string; effort?: string; theme?: string; layout?: string }): Promise<Job> {
   return ((await (await post('/develop', { project, version, ...ai })).json()) as { job: Job }).job
 }
 
@@ -212,7 +215,7 @@ export interface RepoBranch {
   request: number | null
 }
 export interface MergeRequest {
-  id: number; branch: string; note: string; by: { id: number; name: string }; at: string
+  id: number; branch: string; target?: string; note: string; by: { id: number; name: string }; at: string
   status: 'open' | 'merged' | 'rejected'; head: string; ahead: number
   /** 다시 개발한 결과(gen → dev) — 최종 개발하기가 낸 요청 */
   generated?: boolean
@@ -295,6 +298,10 @@ export interface GitSettings { url: string; branch: string; has_token: boolean; 
 
 export async function getGitSettings(project: string): Promise<GitSettings> {
   return (await (await request(`/develop/git?${query({ project })}`)).json()) as GitSettings
+}
+
+export async function deleteGitSettings(project: string): Promise<void> {
+  await request(`/develop/git?${query({ project })}`, { method: 'DELETE' })
 }
 
 export async function saveGitSettings(project: string, body: { url: string; branch: string; token: string }): Promise<GitSettings> {
@@ -696,6 +703,8 @@ export type WorkStatus = 'unassigned' | 'assigned' | 'in_progress' | 'review' | 
 
 export interface WorkItem {
   key: string
+  /** 파생된 브랜치: 받을 때 이 브랜치의 최신 내용, 승인하면 여기로 합친다 */
+  base?: string
   kind: 'common_ui' | 'ui' | 'common_server' | 'server'
   layer: 'frontend' | 'backend'
   title: string
@@ -735,6 +744,8 @@ export interface WorkOverview {
   developers: { id: number; name: string }[]
   labels: Record<WorkStatus, string>
   version: string
+  /** 작업을 보낼 수 있는 브랜치 (dev가 맨 앞) */
+  bases: string[]
 }
 
 export async function getWork(project: string): Promise<WorkOverview> {
@@ -752,15 +763,15 @@ export async function getWorkItem(project: string, key: string): Promise<{ item:
   return (await (await request(`/develop/work/item?${query({ project, key })}`)).json()) as { item: WorkItem; brief: string; brief_edit: BriefEdit | null; rules: string }
 }
 
-export async function assignWork(project: string, key: string, user_id: number): Promise<WorkItem> {
-  return (await (await post('/develop/work/assign', { project, key, user_id })).json()) as WorkItem
+export async function assignWork(project: string, key: string, user_id: number, base: string): Promise<WorkItem> {
+  return (await (await post('/develop/work/assign', { project, key, user_id, base })).json()) as WorkItem
 }
 
 export interface AssignManyResult { results: { key: string; ok: boolean; title?: string; error?: string }[]; assigned: number; failed: number }
 
 /** 여러 묶음을 한 사람에게 (묶음마다 결과, 하나가 실패해도 나머지는 배정) */
-export async function assignMany(project: string, keys: string[], user_id: number): Promise<AssignManyResult> {
-  return (await (await post('/develop/work/assign-many', { project, keys, user_id })).json()) as AssignManyResult
+export async function assignMany(project: string, keys: string[], user_id: number, base: string): Promise<AssignManyResult> {
+  return (await (await post('/develop/work/assign-many', { project, keys, user_id, base })).json()) as AssignManyResult
 }
 
 export async function submitWork(project: string, key: string, note = ''): Promise<WorkItem> {

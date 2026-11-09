@@ -38,6 +38,7 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
   const [filter, setFilter] = useState<Filter>('all')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [target, setTarget] = useState(0)
+  const [base, setBase] = useState('dev')
   const [dialog, setDialog] = useState<null | { brief: WorkItem } | { reject: WorkItem } | { submit: WorkItem }>(null)
   const manage = can(user, 'develop')
   const load = useCallback(() => {
@@ -63,6 +64,7 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
   if (error) return <ErrorNote message={error} onRetry={load} />
   if (!data) return <Loading label="작업 묶음을 읽는 중" lines={3} />
   const alone = data.developers.length <= 1
+  const sendFrom = data.bases.includes(base) ? base : 'dev'
   const total = data.items.length
   const byKey = new Map(data.items.map((i) => [i.key, i]))
   const pick = (k: string) => byKey.get(k)
@@ -82,11 +84,11 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
   const assignPicked = () => {
     const keys = pickedItems.map((i) => i.key)
     void act('_bulk', async () => {
-      const r = await assignMany(project, keys, target)
+      const r = await assignMany(project, keys, target, sendFrom)
       setPicked(new Set())
       const failed = r.results.filter((x) => !x.ok)
       if (failed.length) throw new Error(`${r.assigned}개 배정, ${failed.length}개 실패: ${failed.map((x) => `${pick(x.key)?.title ?? x.key} — ${x.error}`).join(' / ')}`)
-    }, `${keys.length}개를 ${data.developers.find((d) => d.id === target)?.name}님에게 배정했습니다 (묶음마다 작업 브랜치 task/<묶음>).`)
+    }, `${keys.length}개를 ${data.developers.find((d) => d.id === target)?.name}님에게 ${sendFrom} 브랜치로 보냈습니다 (승인하면 ${sendFrom}에 합칩니다).`)
   }
 
   const cell = (i: WorkItem | undefined, label: string) => {
@@ -105,7 +107,7 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {manage && i.status !== 'review' ? (
             <select aria-label={`${i.title} 담당자`} value={i.assignee?.id ?? ''} disabled={busy === i.key}
-              onChange={(e) => { const id = Number(e.target.value); if (id) void act(i.key, () => assignWork(project, i.key, id), `${i.title}: 배정했습니다 (브랜치 ${'task/' + i.key}).`) }}
+              onChange={(e) => { const id = Number(e.target.value); if (id) void act(i.key, () => assignWork(project, i.key, id, i.status === 'unassigned' || i.status === 'done' ? sendFrom : i.base ?? 'dev'), `${i.title}: ${i.status === 'unassigned' || i.status === 'done' ? sendFrom : i.base ?? 'dev'} 브랜치로 보냈습니다.`) }}
               className="min-h-8 max-w-[10rem] rounded-md border border-control bg-card px-2 text-small">
               <option value="">{i.assignee ? i.assignee.name : '담당자 배정…'}</option>
               {data.developers.filter((d) => d.id !== i.assignee?.id).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -119,13 +121,13 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
           )}
           {canReview && <>
             <Button size="sm" variant="ok" icon={<CheckCircle />} disabled={busy === i.key}
-              onClick={() => void act(i.key, () => approveWork(project, i.key), `${i.title}: 승인해 dev에 합쳤습니다.`)}>승인</Button>
+              onClick={() => void act(i.key, () => approveWork(project, i.key), `${i.title}: 승인해 ${i.base ?? 'dev'}에 합쳤습니다.`)}>승인 → {i.base ?? 'dev'}에 합치기</Button>
             <Button size="sm" variant="ghost" icon={<XCircle />} disabled={busy === i.key} onClick={() => setDialog({ reject: i })}>반려</Button>
           </>}
           {manage && i.status === 'review' && mine && !alone && <span className="text-micro text-fg-3">자기 작업은 다른 개발자가 승인</span>}
         </div>
         {i.reason && i.status === 'rejected' && <p className="mt-1 text-small text-danger">반려 사유: {i.reason}</p>}
-        {i.branch && <p className="mt-1 truncate text-micro text-fg-3" title={i.branch}>{i.branch}{i.ahead ? ` · 커밋 ${i.ahead}개 앞섬` : ''}{i.behind ? ` · dev보다 ${i.behind}개 뒤처짐` : ''}</p>}
+        {i.branch && <p className="mt-1 truncate text-micro text-fg-3" title={i.branch}><strong className="font-medium text-fg-2">{i.base ?? 'dev'}에서 파생</strong> · {i.branch}{i.ahead ? ` · 커밋 ${i.ahead}개 앞섬` : ''}{i.behind ? ` · ${i.base ?? 'dev'}보다 ${i.behind}개 뒤처짐` : ''}</p>}
         {open === i.key && i.todo_count > 0 && (
           <ul aria-label="TODO" className="mt-2 max-h-48 space-y-0.5 overflow-auto rounded-md bg-warn-soft p-2 text-small">
             {i.todos.map((t, n) => <li key={n}><code className="text-micro">{t.function}</code> {t.reason}</li>)}
@@ -196,6 +198,17 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
         )}
       </div>
       {note && <p role="status" className="rounded-md bg-sunken px-3 py-1.5 text-small">{note}</p>}
+
+      {manage && (
+        <label className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-card px-3 py-2 text-small">
+          <span className="font-medium">담당자에게 보낼 브랜치</span>
+          <select aria-label="담당자에게 보낼 브랜치" value={sendFrom} onChange={(e) => setBase(e.target.value)}
+            className="min-h-8 rounded-md border border-control bg-card px-2 font-mono text-small">
+            {data.bases.map((b) => <option key={b} value={b}>{b}</option>)}
+          </select>
+          <span className="text-fg-3">배정하면 이 브랜치의 서버 최신 코드를 받고, 승인하면 이 브랜치에 합칩니다.</span>
+        </label>
+      )}
 
       <div className="rounded-lg border border-line bg-card">
         <div className="hidden grid-cols-[minmax(9rem,1fr)_2fr_2fr] gap-2 border-b border-line px-3 py-1.5 text-micro font-medium text-fg-3 md:grid">
