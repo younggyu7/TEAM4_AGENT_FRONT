@@ -9,15 +9,14 @@ import { Badge, cx, IconButton, TextInput } from './ui'
 
 /*
  * 설계 버전 트리 (왼쪽 사이드바, Git 그래프처럼).
- *   위     최종 산출물 (v1.1.1 …)  초록
- *   가운데 ERD         (v1.1 …)    주황
- *   아래   기능 명세    (v1, v2 …)  파랑   (단계 제목 줄은 두지 않고 점 색으로만 구분한다)
+ * 줄은 버전 번호 내림차순: v4.1.1 → v4.1 → v4 → v3 → v2 → v1.1.1 → v1.1 → v1처럼 한 계보(기능 명세 → ERD → 최종본)가
+ * 붙어서 보인다 (자식 번호는 부모 번호를 이어 쓰므로 부모는 늘 자식 아래). 단계는 점 색으로 구분한다:
+ * 최종 산출물 초록 · ERD 주황 · 기능 명세 파랑.
  * 버전은 모두 부모 점에서 갈라져 나온다: ERD(v1.1·v1.2·v1.3)는 기능 명세 v1에서, 최종본(v1.1.1)은 ERD v1.1에서,
  * 다시 만든 기능 명세(stage function_designer, v2)는 v1에서. 선 색은 위쪽(자식) 버전의 단계 색이다.
  * 새로 올린 문서(전체 실행)는 부모 없이 새로 시작한다. 줄을 누르면 그 버전의 단계 화면이 열린다.
  */
 
-const SECTIONS: StagePage[] = ['final', 'erd', 'spec']
 const STAGE_COLOR: Record<StagePage, string> = { spec: 'text-info', erd: 'text-warn', final: 'text-ok' }
 const ROW = 44        // 버전 줄 높이
 const SPEC_STAGE = 'function_designer'
@@ -69,12 +68,9 @@ export function VersionGraph({ project, version, navigate, onReloadProjects }: {
     }
     all.filter((v) => !parentOf(v)).sort(byVersion).forEach((root) => place(root))
 
-    const rows: Row[] = []
-    for (const sec of SECTIONS) {
-      const nodes = all.filter((v) => stage(v.design_version) === sec)
-        .sort((a, b) => compare(b.design_version, a.design_version))   // 위가 최신
-      for (const v of nodes) rows.push({ v, stage: sec, lane: lane.get(v.design_version) ?? 0 })
-    }
+    // 번호 내림차순 (위가 최신 계보): 단계별로 모으면 다른 계보의 ERD·최종본이 사이에 끼어 보인다
+    const rows: Row[] = [...all].sort((a, b) => compare(b.design_version, a.design_version))
+      .map((v) => ({ v, stage: stage(v.design_version), lane: lane.get(v.design_version) ?? 0 }))
     const rowOf = new Map(rows.map((r, i) => [r.v.design_version, i] as const))
     const edges: Edge[] = all.flatMap((v) => {
       const p = parentOf(v)
@@ -86,7 +82,8 @@ export function VersionGraph({ project, version, navigate, onReloadProjects }: {
     return { rows, lanes: next, edges }
   }, [all])
 
-  const gap = lanes > 8 ? 9 : 13
+  // 계보 선이 많으면 간격을 줄여 글자 칸을 남긴다 (화면이 작거나 사이드바에 스크롤바가 생기면 번호가 두 줄로 꺾이지 않게)
+  const gap = lanes > 8 ? 8 : lanes > 4 ? 10 : 13
   const width = Math.max(1, lanes) * gap + 6
   const x = (l: number) => 7 + l * gap
 
@@ -152,11 +149,14 @@ export function VersionGraph({ project, version, navigate, onReloadProjects }: {
                     onClick={() => navigate({ name: 'workspace', project: project.id, version: v.design_version, page: r.stage })}
                     className="min-w-0 flex-1 px-1.5 text-left"
                   >
-                    <span className="flex items-center gap-1.5">
-                      <span className={cx('text-label tabular-nums', current ? 'font-semibold' : 'text-fg-2')}>v{v.design_version}</span>
-                      {v.approval?.decision === 'approve' ? <Badge tone="ok">승인</Badge>
-                        : v.approval?.decision === 'changes' ? <Badge tone="warn">수정 지시</Badge>
-                        : v.db_validation && <Badge tone={v.db_validation === 'PASSED' ? 'ok' : 'danger'}>DB {v.db_validation === 'PASSED' ? '통과' : '실패'}</Badge>}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {/* 번호는 꺾지 않는다. 자리가 모자라면 배지가 먼저 잘린다 */}
+                      <span className={cx('shrink-0 whitespace-nowrap text-label tabular-nums', current ? 'font-semibold' : 'text-fg-2')}>v{v.design_version}</span>
+                      <span className="flex min-w-0 overflow-hidden">
+                        {v.approval?.decision === 'approve' ? <Badge tone="ok">승인</Badge>
+                          : v.approval?.decision === 'changes' ? <Badge tone="warn">수정 지시</Badge>
+                          : v.db_validation && <Badge tone={v.db_validation === 'PASSED' ? 'ok' : 'danger'}>DB {v.db_validation === 'PASSED' ? '통과' : '실패'}</Badge>}
+                      </span>
                     </span>
                     <span className="block truncate text-micro text-fg-3">
                       {[v.title, formatDate(v.created_at)].filter(Boolean).join(' · ') || '날짜 없음'}
