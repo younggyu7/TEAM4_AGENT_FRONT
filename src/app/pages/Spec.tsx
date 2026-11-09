@@ -360,7 +360,8 @@ function BulkActions({ items, draft, scope, onDone }: { items: ReviewItem[]; dra
 
 /**
  * '전체 보기': 모든 기능을 묶음(group)별 작은 칸으로 한눈에. 칸에는 기능 이름만, 마우스를 올리면(또는 키보드로 고르면) 세부가 뜨고
- * 누르면 초안 편집에서 그 기능을 연다. 사람이 고친 기능은 파란 테두리와 고친 사람·고친 칸, 확인할 것이 남은 기능은 주황,
+ * 누르면 초안 편집에서 그 기능을 연다. 사람이 고친 기능은 파란 테두리와 고친 사람·고친 칸, 확인할 것이 남은 기능은
+ * 필수 수(주황 채움)와 권장 수(연한 주황)를 따로,
  * 사람이 체크하거나 답한 항목은 초록 표시(무엇을 누가 확인했는지는 세부에).
  * 묶음 제목 옆(과 맨 위 '전체')의 버튼으로 그 묶음의 남은 항목을 한꺼번에 처리한다 (필수 추천대로 · 가정 맞음 · 요구사항 확인 추천대로).
  */
@@ -378,14 +379,16 @@ function FunctionOverview({ draft, items, open, done, onPick }: {
     return [...m.entries()]
   }, [draft.functions])
   const edited = draft.functions.filter((f) => draft.state.functions[f.function_id]).length
-  const flagged = draft.functions.filter((f) => open.has(f.function_id)).length
+  const left = [...open.values()].flat()
+  const requiredLeft = left.filter((i) => i.required).length
   const checked = draft.functions.filter((f) => done.has(f.function_id)).length
   return (
     <div className="border-t border-line px-5 py-4">
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-small text-fg-3">
         <span>기능 {fmt(draft.functions.length)}개</span>
         <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm border-2 border-info" />사람이 고침 {fmt(edited)}</span>
-        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-warn" />확인할 것 남음 {fmt(flagged)}</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-warn" />필수 확인 남음 {fmt(requiredLeft)}</span>
+        <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="size-3 rounded-sm bg-warn-soft ring-1 ring-warn/40" />권장 확인 남음 {fmt(left.length - requiredLeft)}</span>
         <span className="inline-flex items-center gap-1.5"><Check size={12} weight="bold" aria-hidden="true" className="text-ok" />사람이 확인함 {fmt(checked)}</span>
         <span className="ml-auto">마우스를 올리면 세부 · 누르면 편집</span>
       </div>
@@ -433,6 +436,7 @@ function OverviewTile({ fn, draft, items, done, onPick }: {
   const editor = draft.editors[fn.function_id]
   const editWhat = draft.lastChange[fn.function_id]?.what
   const required = items.filter((i) => i.required).length
+  const optional = items.length - required
   // 오른쪽 끝 칸이면 세부 칸을 왼쪽으로 펼친다 (화면 밖으로 나가지 않게)
   const [flip, setFlip] = useState(false)
   const place = (el: HTMLElement) => setFlip(el.getBoundingClientRect().left + 336 > window.innerWidth)
@@ -443,9 +447,14 @@ function OverviewTile({ fn, draft, items, done, onPick }: {
           edited ? 'border-2 border-info' : 'border-line')}>
         <span className="flex items-start gap-1.5">
           <span className="line-clamp-2 min-w-0 flex-1 text-small font-medium">{fn.name || <span className="text-danger">이름 없음</span>}</span>
-          {items.length > 0 && (
-            <span className={cx('shrink-0 rounded-sm px-1 text-micro font-semibold tabular-nums', required ? 'bg-warn text-on-primary' : 'bg-warn-soft text-warn')}>
-              {items.length}
+          {required > 0 && (
+            <span className="shrink-0 rounded-sm bg-warn px-1 text-micro font-semibold text-on-primary tabular-nums" aria-label={`필수 확인 ${required}건`}>
+              {required}
+            </span>
+          )}
+          {optional > 0 && (
+            <span className="shrink-0 rounded-sm bg-warn-soft px-1 text-micro font-semibold text-warn tabular-nums" aria-label={`권장 확인 ${optional}건`}>
+              {optional}
             </span>
           )}
           {done.length > 0 && (
@@ -487,10 +496,13 @@ function OverviewTile({ fn, draft, items, done, onPick }: {
         )}
         {items.length > 0 ? (
           <div className="mt-2 border-t border-line pt-2">
-            <p className="text-micro font-medium text-warn">확인할 것 {items.length}건{required ? ` (필수 ${required})` : ''}</p>
+            <p className="text-micro font-medium text-warn">확인할 것 {items.length}건 · 필수 {required} · 권장 {optional}</p>
             <ul className="mt-1 space-y-1">
-              {items.slice(0, 5).map((i) => (
-                <li key={i.id} className="text-micro text-fg-2"><span className="text-fg-3">{KIND_LABEL[i.kind]}</span> · <span className="line-clamp-2 inline">{i.title}</span></li>
+              {[...items].sort((a, b) => Number(b.required) - Number(a.required)).slice(0, 5).map((i) => (
+                <li key={i.id} className="text-micro text-fg-2">
+                  <span className={i.required ? 'font-semibold text-warn' : 'text-fg-3'}>{i.required ? '필수' : '권장'}</span>
+                  {' · '}<span className="text-fg-3">{KIND_LABEL[i.kind]}</span> · <span className="line-clamp-2 inline">{i.title}</span>
+                </li>
               ))}
               {items.length > 5 && <li className="text-micro text-fg-3">외 {items.length - 5}건</li>}
             </ul>
