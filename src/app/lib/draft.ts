@@ -209,6 +209,19 @@ export function useDraft(design: Design, project: string, version: string, canSa
     update((s) => ({ ...s, checked: { ...s.checked, [itemId]: value } }))
   }, [update])
 
+  /** 여러 확인 항목을 한 번에 (전체 보기 묶음별 '추천대로'·'가정 맞음'과 그 되돌리기). 변경 내역에는 한 번의 저장으로 남는다.
+   * 답이 undefined면 그 답을 지우고, 체크가 false면 체크를 푼다 */
+  const applyMany = useCallback((answers: Record<string, string | undefined>, checked: Record<string, boolean>) => {
+    update((s) => {
+      const next = { ...s.answers }
+      for (const [id, answer] of Object.entries(answers)) {
+        if (answer === undefined) delete next[id]
+        else next[id] = answer
+      }
+      return { ...s, answers: next, checked: { ...s.checked, ...checked } }
+    })
+  }, [update])
+
   const setDisposition = useCallback((issueId: string, choice: DispositionChoice | null, note?: string) => {
     update((s) => {
       const { [issueId]: current, ...rest } = s.dispositions ?? {}
@@ -308,6 +321,7 @@ export function useDraft(design: Design, project: string, version: string, canSa
     clearEntityEdits,
     setAnswer,
     setChecked,
+    applyMany,
     setDisposition,
     finalize,
     reset,

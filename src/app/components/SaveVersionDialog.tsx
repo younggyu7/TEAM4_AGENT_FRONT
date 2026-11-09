@@ -13,7 +13,8 @@ import { Button, IconButton, Label, TextArea, TextInput } from './ui'
  *   spec: 기능 명세 내보내기 — 수정한 기능 명세(Markdown·JSON)를 Agent에 넘겨 이 기능 명세로 ERD를 만든다 → v<N>.1 …
  *   erd : ERD 저장 — 고친 테이블을 넘겨 데이터 설계를 다시 만든다 → 같은 기능 명세 아래 다음 ERD 번호
  * spec 내보내기에 새로 답한 확인 질문이 있으면 백엔드가 LLM 없이 코드로 반영한다 (추천과 같은 답은 '결정' 표시,
- *   다른 답은 그 규칙을 답으로 바꿈). '(확인 필요)' 규칙을 '추천안 맞음'으로 확인했으면 그 규칙도 LLM 없이 '(결정)'으로 바꾼다.
+ *   다른 답은 그 규칙을 답으로 바꿈). '(확인 필요)'·'(가정)' 규칙을 '추천안 맞음'·'가정 맞음'으로 확인했으면 그 규칙도 LLM 없이 '(결정)'으로 바꾼다
+ *   (한 번 결정한 규칙은 기능 명세를 다시 만들어도 다시 묻지 않는다: 백엔드 function_designer.carry_decisions).
  *   aiAnswers면 ERD 대신 '답 반영'을 한다: LLM이 답이 바꾼 기능만 다시 설계 → 기능 명세 새 버전.
  *   redo면 확정한 기능 명세에서 새 기능 명세 버전을 만든다 (답이 없어도 수정·의견으로, 확정은 되돌리지 않음).
  * erd 저장에는 '확인 필요'에서 고른 의미 검토 지적 처리를 함께 넘겨 새 ERD 버전에 남긴다 (LLM 없음).
@@ -46,9 +47,9 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
   const answers = Object.values(draft.state.answers).filter((a) => a.trim()).length
   const fresh = useMemo(() => (mode === 'spec' ? newAnswers(design, draft.state) : {}), [mode, design, draft.state])
   const freshIds = Object.keys(fresh)
-  // '추천안 맞음'으로 확인한 '(확인 필요)' 규칙 → 백엔드가 LLM 없이 '(결정)'으로 바꾼다 (내보내기·AI로 답 반영 모두)
+  // '추천안 맞음'·'가정 맞음'으로 확인한 '(확인 필요)'·'(가정)' 규칙 → 백엔드가 LLM 없이 '(결정)'으로 바꾼다 (내보내기·AI로 답 반영·다시 만들기)
   const confirms = useMemo(() => (mode === 'spec' ? draft.functions.flatMap((f) => f.business_rules
-    .filter((r) => ruleMark(r)?.kind === 'unconfirmed' && draft.state.checked[assumptionId(f.function_id, r)])
+    .filter((r) => Boolean(ruleMark(r)) && draft.state.checked[assumptionId(f.function_id, r)])
     .map((rule) => ({ function_id: f.function_id, rule }))) : []), [mode, draft.functions, draft.state.checked])
   // 기능 명세 새 버전: 'AI로 답 반영'(새 답이 있을 때) 또는 확정한 기능 명세의 '다시 만들기'
   const answering = (Boolean(aiAnswers) && freshIds.length > 0) || Boolean(redo)
@@ -70,7 +71,7 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
       setError('')
       setTitle(mode === 'spec'
         ? redo ? `기능 명세 v${version} 다시 만들기${changes.length ? ` (수정 ${changes.length}건)` : ''}`
-        : answering ? `기능 명세 v${version} 확인 반영 (질문 답 ${freshIds.length}건 · 추천안 확인 ${confirms.length}건)`
+        : answering ? `기능 명세 v${version} 확인 반영 (질문 답 ${freshIds.length}건 · 확인한 규칙 ${confirms.length}건)`
         : `기능 명세 v${version}${changes.length ? ` 수정 ${changes.length}건` : ''} → ERD`
         : editedTables.length ? `ERD 수정: ${editedTables.slice(0, 2).join(', ')}${editedTables.length > 2 ? ` 외 ${editedTables.length - 2}개` : ''}` : '')
       if (mode === 'spec') getCapabilities().then(setCaps).catch(() => setCaps(null))
@@ -158,7 +159,7 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
           <div className="space-y-2">
             <p className="text-label font-medium">
               새로 답한 질문 {freshIds.length}건 · 요구사항 확인 {freshRequirement}건 · 기능 명세 질문 {freshIds.length - freshRequirement}건
-              {confirms.length > 0 && ` · 추천안 확인 규칙 ${confirms.length}건`}
+              {confirms.length > 0 && ` · 확인한 규칙 ${confirms.length}건`}
               {changes.length > 0 && ` · 기능 수정 ${changes.length}건`}
             </p>
             {freshIds.length > 0 && (
@@ -169,11 +170,11 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
             <p className="text-small text-fg-3">
               {redo && `확정한 기능 명세 v${version}는 그대로 두고, 아래 내용으로 새 기능 명세 버전(v${version}.N)을 만듭니다. `}
               요구사항 검토 Agent가 답으로 바뀐 요구사항의 충돌을 다시 확인하고, 기능 명세 Agent가 추천안과 다른 답이 바꾼 기능만 다시 설계합니다.
-              추천안과 같은 답과 '추천안 맞음'으로 확인한 규칙은 '(결정)' 표시만 합니다 (LLM 사용 없음).
+              추천안과 같은 답과 '추천안 맞음'·'가정 맞음'으로 확인한 규칙은 '(결정)' 표시만 합니다 (LLM 사용 없음, 다시 만들어도 다시 묻지 않음).
               {changes.length > 0 && ` 직접 고친 기능 ${changes.length}개는 고친 그대로 두고 다시 설계하지 않습니다 (의견이 없으면 LLM 사용 없음).`}
             </p>
             {redo && changes.length + freshIds.length + confirms.length === 0 && (
-              <p className="text-small text-warn">고친 기능·새 답이 없으면 아래 의견에 바꿀 내용을 적어야 새 버전을 만들 수 있습니다.</p>
+              <p className="text-small text-warn">고친 기능·새 답·확인한 규칙이 없으면 아래 의견에 바꿀 내용을 적어야 새 버전을 만들 수 있습니다.</p>
             )}
             {confirms.length > 0 && caps && !caps.confirm_rules && (
               <p className="rounded-md bg-warn-soft px-3 py-2 text-small text-warn">
@@ -194,7 +195,7 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
             </p>
             {confirms.length > 0 && (
               <p className="rounded-md bg-info-soft px-3 py-2 text-small text-info">
-                '추천안 맞음'으로 확인한 '(확인 필요)' 규칙 {confirms.length}건은 LLM 없이 '(결정)'으로 바꿉니다.
+                '추천안 맞음'·'가정 맞음'으로 확인한 규칙 {confirms.length}건은 LLM 없이 '(결정)'으로 바꿉니다.
                 표시만 바뀌므로 데이터 설계 Agent는 그 기능의 테이블을 다시 설계하지 않습니다.
               </p>
             )}

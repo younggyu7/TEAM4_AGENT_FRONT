@@ -8,7 +8,8 @@ import type { DraftState } from './draft'
 // - question  : 기능 명세 확인 질문 (FQ-…) → 답을 고르거나 적으면 해결
 // - unconfirmed: '(가정)' 한도를 넘어 질문하지도 가정하지도 않은 '(확인 필요)' 업무 규칙 (문장은 추천안)
 //               → 확정 전에 '추천안 맞음' 표시, 또는 규칙을 고쳐 '(확인 필요)'를 지우거나 '(가정)'으로 바꾸면 사라짐
-// - assumption: 원문에 없어 '(가정)'으로 넣은 업무 규칙 → '확인함' 표시, 또는 규칙을 고쳐 '(가정)'을 지우면 사라짐
+// - assumption: 원문에 없어 '(가정)'으로 넣은 업무 규칙 → '가정 맞음' 표시(새 버전에서 '(결정)', 다시 만들어도 다시 묻지 않음),
+//               또는 규칙을 고쳐 '(가정)'을 지우면 사라짐
 // - issue     : 규칙 검사가 남긴 열린 지적 → 반영했으면 '확인함' 표시
 // - remark    : ERD를 만들 때 의미 검토가 남긴 지적 (데이터 누락 등, Agent가 한 번 고친 뒤에도 남은 것)
 //               → ERD 화면에서 '반영함·문제 아님·미해결로 둠' 중 하나를 반드시 고른다 (최종 확정 때 서버에 남는다)
@@ -247,6 +248,36 @@ function issueItem(issue: Issue, targetId: string | undefined, targetLabel: stri
     resolved: Boolean(draft.checked[id]),
     auto: false,
     issue,
+  }
+}
+
+/** 한꺼번에 처리할 묶음 하나: 질문 답(질문 ID → 추천안)과 체크할 항목 ID. manual = 같은 종류지만 사람이 직접 해야 하는 남은 항목 수 */
+export interface BulkPlan { answers: Record<string, string>; checked: string[]; count: number; manual: number }
+
+/**
+ * 전체 보기의 묶음별 '한꺼번에': 남은 항목 중 사람이 고를 것 없이 처리할 수 있는 것.
+ * - required: 필수 항목을 추천대로 — 질문은 추천안으로 답, 확인 필요 규칙은 '추천안 맞음'. 추천안이 없는 질문·수정 지시·자동 검사는 manual
+ * - assumption: 가정을 모두 '가정 맞음'
+ * - requirement: 요구사항 확인 질문을 추천안으로 답 (추천안이 없으면 manual)
+ */
+export function bulkPlans(items: ReviewItem[]): Record<'required' | 'assumption' | 'requirement', BulkPlan> {
+  const open = items.filter((i) => !i.resolved)
+  const plan = (pick: ReviewItem[], all: ReviewItem[]): BulkPlan => {
+    const answers: Record<string, string> = {}
+    const checked: string[] = []
+    for (const i of pick) {
+      if (i.question?.recommended) answers[i.question.question_id] = i.question.recommended
+      else checked.push(i.id)
+    }
+    return { answers, checked, count: pick.length, manual: all.length - pick.length }
+  }
+  const required = open.filter((i) => i.required)
+  const requirement = open.filter((i) => i.kind === 'requirement')
+  const assumption = open.filter((i) => i.kind === 'assumption')
+  return {
+    required: plan(required.filter((i) => i.question ? Boolean(i.question.recommended) : i.kind === 'unconfirmed'), required),
+    assumption: plan(assumption, assumption),
+    requirement: plan(requirement.filter((i) => Boolean(i.question?.recommended)), requirement),
   }
 }
 
