@@ -12,7 +12,7 @@ export const NOTICE_KIND: Record<Notice['kind'], { tone: Tone; label: string }> 
   directive: { tone: 'warn', label: '수정 지시' }, waiting: { tone: 'neutral', label: '대기' },
   request: { tone: 'info', label: '승인 요청' }, decide: { tone: 'info', label: '승인 대기' }, develop: { tone: 'ok', label: '개발 대기' },
   rejected: { tone: 'danger', label: '반려' },
-  uploaded: { tone: 'neutral', label: '분석 완료' }, erd_draft: { tone: 'neutral', label: 'ERD 초안' }, developed: { tone: 'ok', label: '개발 초안' },
+  uploaded: { tone: 'neutral', label: '분석 완료' }, spec_redone: { tone: 'info', label: '다시 만듦' }, erd_draft: { tone: 'neutral', label: 'ERD 초안' }, developed: { tone: 'ok', label: '개발 초안' },
   merge_request: { tone: 'info', label: '합치기 요청' }, merged: { tone: 'ok', label: '합치기 완료' }, merge_rejected: { tone: 'danger', label: '합치기 반려' },
   task_assigned: { tone: 'warn', label: '작업 배정' }, released: { tone: 'ok', label: '릴리스' },
 }
