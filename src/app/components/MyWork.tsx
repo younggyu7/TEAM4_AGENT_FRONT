@@ -79,3 +79,61 @@ export function TokenCard() {
     </Card>
   )
 }
+
+/** 최종 개발물 오른쪽 'VS Code 확장': 개발자가 이 화면에서 바로 확장을 연결하도록 서버 주소·토큰 만들기와 이 프로젝트의 내 작업.
+ * 토큰은 사람 단위라 여기서 만들어도 모든 프로젝트에 쓴다 (목록·지우기는 홈 '확장 접속 토큰') */
+export function ExtensionCard({ project }: { project: string }) {
+  const [tokens, setTokens] = useState<AccessTokenInfo[] | null>(null)
+  const [work, setWork] = useState<MyWork['projects'][number] | null>(null)
+  const [fresh, setFresh] = useState('')
+  const [error, setError] = useState('')
+  const server = window.location.origin
+  useEffect(() => {
+    listTokens().then(setTokens).catch((e) => setError((e as Error).message))
+    getMyWork().then((d) => setWork(d.projects.find((p) => p.project === project) ?? null)).catch(() => setWork(null))
+  }, [project])
+  const make = async () => {
+    setError('')
+    try {
+      const made = await createToken('VS Code')
+      setFresh(made.token)
+      setTokens((t) => [made.info, ...(t ?? [])])
+    } catch (e) { setError((e as Error).message) }
+  }
+  const used = tokens?.map((t) => t.last_used_at).filter(Boolean).sort().pop()
+  const items = work ? [...work.items.filter((i) => i.status !== 'done'), ...work.reviews] : []
+  return (
+    <Card aria-labelledby="extension">
+      <CardHeader eyebrow="VS Code" title="확장 연결" titleId="extension" />
+      <div className="space-y-2 px-5 pb-5 text-small">
+        <p className="text-fg-3">VS Code 확장(TEAM4 개발)에서 연결을 누르고 아래 서버 주소와 토큰을 넣으면 맡은 작업을 받고 제출합니다. 토큰은 한 사람에 하나면 모든 프로젝트에 씁니다.</p>
+        <p className="flex items-center gap-1"><span className="text-fg-3">서버</span><code className="min-w-0 flex-1 truncate font-mono">{server}</code>
+          <Button size="sm" variant="ghost" icon={<Copy />} aria-label="서버 주소 복사" onClick={() => void navigator.clipboard.writeText(server)} /></p>
+        {!tokens ? <Loading label="토큰을 읽는 중" lines={1} /> : (
+          <p className="flex items-center gap-2">
+            <span className="min-w-0 flex-1">{tokens.length ? `토큰 ${tokens.length}개 · ${used ? `마지막 사용 ${formatDate(used)}` : '아직 안 씀'}` : '아직 토큰이 없습니다'}</span>
+            <Button size="sm" variant={tokens.length ? 'secondary' : 'primary'} icon={<Key />} onClick={() => void make()}>토큰 만들기</Button>
+          </p>
+        )}
+        {fresh && (
+          <p role="status" className="rounded-md bg-warn-soft px-3 py-2">지금만 보입니다 — 복사해 두세요:
+            <code className="mx-1 break-all font-mono">{fresh}</code>
+            <Button size="sm" variant="ghost" icon={<Copy />} onClick={() => void navigator.clipboard.writeText(fresh)}>복사</Button></p>
+        )}
+        {error && <p className="text-danger">{error}</p>}
+        <p className="pt-1 font-medium">이 프로젝트의 내 작업</p>
+        {items.length === 0 ? <p className="text-fg-3">맡은 작업·검토 요청이 없습니다.</p> : (
+          <ul className="space-y-1">
+            {items.map((i) => (
+              <li key={`${i.key}:${i.status}`} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">{i.title}</span>
+                {work!.reviews.includes(i) ? <Badge tone="warn">검토 요청 · {i.assignee?.name}</Badge>
+                  : <Badge tone={i.status === 'rejected' ? 'danger' : 'info'}>{i.status_label}</Badge>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Card>
+  )
+}

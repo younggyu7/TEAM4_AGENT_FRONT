@@ -54,7 +54,7 @@ export function Login({ onSignIn }: { onSignIn: (email: string, password: string
           <span aria-hidden="true" className="inline-flex size-8 items-center justify-center rounded-md bg-on-hero text-hero">
             <TreeStructure size={18} weight="bold" />
           </span>
-          <span className="text-label font-semibold">Req Agent</span>
+          <span className="text-label font-semibold">ADAM</span>
         </div>
 
         <div className="relative z-10 max-w-xl">

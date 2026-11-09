@@ -9,8 +9,9 @@ import type { EditPage, Page } from '../lib/route'
 import { BarList, TickMeter, TokenBars, TokenRows } from './charts'
 import { OPEN_CODE_FILE } from './CodeBrowser'
 import { MembersCard } from './MembersCard'
+import { ExtensionCard } from './MyWork'
 import { RepoCard } from './RepoCard'
-import type { User } from '../lib/session'
+import { can, type User } from '../lib/session'
 import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
 
 /* ============================================================ 작업 화면 오른쪽 */
@@ -39,9 +40,10 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
   return (
     <>
       {page === 'develop' ? (
-        // 최종 개발물: 진행 상황·검토 지적 대신 코드 저장소(브랜치·이력), 업무 로직 현황과 개발할 때 쓴 토큰
+        // 최종 개발물: 진행 상황·검토 지적 대신 코드 저장소(브랜치·이력), VS Code 확장 연결(개발자만), 업무 로직 현황과 개발할 때 쓴 토큰
         <>
           {project && user && record?.develop && <RepoCard project={project.id} version={record.design_version} user={user} />}
+          {project && can(user, 'develop') && <ExtensionCard project={project.id} />}
           {project && <LogicStatusCard project={project.id} record={record} />}
           <DevelopTokenCard record={record} />
           {project && <MembersCard project={project.id} canEdit={canEditMembers} />}

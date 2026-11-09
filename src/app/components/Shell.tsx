@@ -194,7 +194,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
         <TreeStructure size={18} weight="bold" />
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-label font-semibold">Req Agent</span>
+        <span className="block truncate text-label font-semibold">ADAM</span>
         {!compact && <span className="block truncate text-micro text-fg-3">설계 초안 작업실</span>}
       </span>
     </div>
@@ -297,21 +297,13 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
         <p className="mt-2 truncate text-small text-fg-3" title={user.email}>{user.email}</p>
       </section>
 
-      {/* 메뉴 */}
+      {/* 메뉴. 순서: 홈 · 관리자 페이지 → My dashboard → 설계 버전 → 알림 → Projects */}
       <nav aria-label="주 메뉴">
         <ul className="space-y-0.5">
           <NavItem icon={<House />} label="홈" active={route.name === 'home'} onClick={() => navigate({ name: 'home' })} />
           {user.is_admin && <NavItem icon={<UsersThree />} label="관리자 페이지" active={route.name === 'members'} onClick={() => navigate({ name: 'members' })} />}
         </ul>
       </nav>
-
-      {/* 나에게 온 알림 (설계 버전 위): 보고 있는 프로젝트가 있으면 그 프로젝트, 없으면 전체. '확인'을 누르면 사라진다 */}
-      <SidebarNotices navigate={navigate} project={current && project ? current.project : undefined} />
-
-      {/* 보고 있는 프로젝트의 버전 트리 (아래 기능 명세 → 가운데 ERD → 위 최종 산출물, 다시 만든 기능 명세는 갈라져 나온다) */}
-      {current && project && (
-        <VersionGraph project={project} version={current.version} navigate={navigate} onReloadProjects={onReloadProjects} />
-      )}
 
       {/* 사용자 대시보드 */}
       <section aria-labelledby="my-dashboard">
@@ -322,6 +314,14 @@ function Sidebar({ user, onSignOut, route, navigate, projects, onReloadProjects,
           <MiniStat term="최종 승인" value={approved} />
         </dl>
       </section>
+
+      {/* 보고 있는 프로젝트의 버전 트리 (아래 기능 명세 → 가운데 ERD → 위 최종 산출물, 다시 만든 기능 명세는 갈라져 나온다) */}
+      {current && project && (
+        <VersionGraph project={project} version={current.version} navigate={navigate} onReloadProjects={onReloadProjects} />
+      )}
+
+      {/* 나에게 온 알림 (설계 버전 아래): 보고 있는 프로젝트가 있으면 그 프로젝트, 없으면 전체. '확인'을 누르면 사라진다 */}
+      <SidebarNotices navigate={navigate} project={current && project ? current.project : undefined} />
 
       {/* 프로젝트 목록 */}
       <section aria-labelledby="project-list" className="min-h-0">
