@@ -126,7 +126,9 @@ export function Shell({ user, onSignOut, route, navigate, projects, onReloadProj
                 pinned ? 'xl:sticky xl:top-5 xl:h-[calc(100dvh-2.5rem)] xl:pl-2'
                   : 'space-y-4 xl:sticky xl:top-5 xl:w-[var(--peek-w)] xl:shrink-0 xl:overflow-hidden xl:transition-[width] xl:duration-500 xl:ease-in-out')}
               style={pinned ? undefined : { '--peek-w': peek ? `${layout.right + 16}px` : '0px' } as CSSProperties}>
-              <div className={cx('space-y-4', pinned ? 'xl:h-full xl:overflow-y-auto'
+              {/* relative: 안의 absolute 요소(말풍선·화면 낭독기용 sr-only 설명 등)가 이 스크롤 상자 안에서 잘리게 한다.
+                  없으면 바깥 aside를 기준으로 그려져 본문이 짧은 화면에서 페이지 아래에 빈 스크롤이 생긴다 */}
+              <div className={cx('relative space-y-4', pinned ? 'xl:h-full xl:overflow-y-auto'
                 : 'xl:max-h-[calc(100dvh-2.5rem)] xl:w-[var(--right-w)] xl:overflow-y-auto xl:ml-4')}>
                 <div className="hidden justify-end xl:flex">
                   <button type="button" onClick={() => { save({ rightPinned: !pinned }); setPeek(false) }}
