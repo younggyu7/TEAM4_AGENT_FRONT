@@ -44,6 +44,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const [run, setRun] = useState<PreviewStatus | null>(null)
   const [error, setError] = useState('')
   const [gitOpen, setGitOpen] = useState(false)
+  const [layoutSaved, setLayoutSaved] = useState(0)   // 화면 구성을 저장하면 작업 묶음을 바로 다시 읽는다 (영역이 바뀌므로)
   const [branch, setBranch] = useRepoBranch(project)
   const repoVersion = useRepoVersion()
   const [branches, setBranches] = useState<RepoBranch[]>([])
@@ -219,12 +220,12 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
       )}
       {step === '1' && developed && (
         <section aria-label="작업" className="mt-4 space-y-3">
-          <h2 className="text-label font-semibold">작업 묶음 <span className="font-normal text-fg-3">· 코드를 사람에게 나눠 맡기는 단위. 배정하면 작업 브랜치가 생기고, 담당자가 VS Code 확장(또는 아래 코드 보기)에서 고쳐 제출하면 다른 개발자가 승인합니다</span></h2>
-          <WorkBundles project={project} user={user} refreshKey={developed.at} />
           <details className="rounded-lg border border-line bg-card">
-            <summary className="cursor-pointer px-3 py-2 text-label font-semibold">화면 구성 <span className="font-normal text-fg-3">· 생성 앱의 메뉴 이름·순서·숨김과 홈 칸 (코드 수정 없이, 저장하면 dev에 커밋)</span></summary>
-            <div className="border-t border-line p-3"><LayoutEditor project={project} user={user} /></div>
+            <summary className="cursor-pointer px-3 py-2 text-label font-semibold">화면 구성 · 업무 영역 <span className="font-normal text-fg-3">· 비슷한 메뉴를 영역으로 묶습니다(AI 제안 가능). 앱의 왼쪽 메뉴·홈과 아래 작업 묶음이 이 영역을 따릅니다. 저장하면 dev에 커밋</span></summary>
+            <div className="border-t border-line p-3"><LayoutEditor project={project} user={user} onSaved={() => setLayoutSaved(Date.now())} /></div>
           </details>
+          <h2 className="text-label font-semibold">작업 묶음 <span className="font-normal text-fg-3">· 업무 영역마다 화면·서버 묶음. 배정하면 작업 브랜치가 생기고, 담당자가 VS Code 확장(또는 아래 코드 보기)에서 고쳐 제출하면 다른 개발자가 승인합니다</span></h2>
+          <WorkBundles project={project} user={user} refreshKey={`${developed.at}:${layoutSaved}`} />
         </section>
       )}
       {step === '1' && developed && (
