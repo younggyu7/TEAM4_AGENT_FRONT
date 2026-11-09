@@ -474,7 +474,14 @@ export interface Approval {
   by: { id: number; name: string; role: string }
 }
 
-export async function decideFinal(body: { project: string; version: string; decision: 'approve' | 'changes'; targets?: ('spec' | 'erd')[]; items?: ChangeItem[]; comment: string }): Promise<Approval> {
+/** 최종 승인 전에 남은 확인 항목 (recommended가 비면 답을 적어야 승인된다) */
+export interface OpenItem { id: string; kind: 'question' | 'rule' | 'automation' | 'state' | 'source'; title: string; detail: string; options: string[]; recommended: string; where: string[] }
+
+export async function getOpenItems(project: string, version: string): Promise<OpenItem[]> {
+  return ((await (await request(`/projects/open-items?${query({ project, version })}`)).json()) as { items: OpenItem[] }).items
+}
+
+export async function decideFinal(body: { project: string; version: string; decision: 'approve' | 'changes'; targets?: ('spec' | 'erd')[]; items?: ChangeItem[]; comment: string; answers?: Record<string, string> }): Promise<Approval> {
   return ((await (await post('/projects/approval', body)).json()) as { approval: Approval }).approval
 }
 
@@ -699,6 +706,9 @@ export interface WorkItem {
   files: string[]
   file_count: number
   empty_holes: number
+  /** 개발 AI가 끝까지 구현하지 못한 항목 (담당자가 채운다) */
+  todos: { function: string; rule: string; reason: string }[]
+  todo_count: number
   ai_holes: number
   ai_files: number
   edited: number
@@ -731,8 +741,15 @@ export async function getWork(project: string): Promise<WorkOverview> {
   return (await (await request(`/develop/work?${query({ project })}`)).json()) as WorkOverview
 }
 
-export async function getWorkItem(project: string, key: string): Promise<{ item: WorkItem; brief: string; rules: string }> {
-  return (await (await request(`/develop/work/item?${query({ project, key })}`)).json()) as { item: WorkItem; brief: string; rules: string }
+/** 작업 설명 고치기 (웹·확장 공유). text가 비면 자동 설명으로 되돌린다. base: 고치기 시작한 내용 (그 사이 다른 사람이 고쳤으면 409) */
+export async function saveWorkBrief(project: string, key: string, text: string, base: string): Promise<{ brief: string; edit: BriefEdit | null }> {
+  return (await (await post('/develop/work/brief', { project, key, text, base })).json()) as { brief: string; edit: BriefEdit | null }
+}
+
+export interface BriefEdit { by: { id: number; name: string }; at: string }
+
+export async function getWorkItem(project: string, key: string): Promise<{ item: WorkItem; brief: string; brief_edit: BriefEdit | null; rules: string }> {
+  return (await (await request(`/develop/work/item?${query({ project, key })}`)).json()) as { item: WorkItem; brief: string; brief_edit: BriefEdit | null; rules: string }
 }
 
 export async function assignWork(project: string, key: string, user_id: number): Promise<WorkItem> {

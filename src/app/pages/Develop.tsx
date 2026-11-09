@@ -175,16 +175,6 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
               <p className="mt-1 text-small text-fg-3">코드 틀 기능은 등록·조회·수정·삭제·상태 바꾸기 기본 동작이고, 업무 규칙 자리는 아래 코드에서 노란 줄(빈 로직)로 보입니다. 자세한 내용은 IMPLEMENTATION.md.</p>
             </Row>
           )}
-          {developed?.summary && developed.summary.todo_count > 0 && (
-            <Row label="고객 답 대기">
-              <details>
-                <summary className="cursor-pointer text-small text-warn">구현하지 않은 규칙 {developed.summary.todo_count}건 (고객 확인이 필요해 TODO로 둠)</summary>
-                <ul className="mt-1 space-y-0.5 text-small">
-                  {developed.summary.todos.map((t, i) => <li key={i}><code className="text-micro">{t.function}</code> {t.rule} — <span className="text-fg-3">{t.reason}</span></li>)}
-                </ul>
-              </details>
-            </Row>
-          )}
           <Row label="결과물">
             {developed
               ? <span className="text-fg-2">서버 코드 폴더에 화면(frontend)·{developed.backend ? '백엔드(backend)·' : ''}DB(db)·개발 스펙(spec)이 있습니다.

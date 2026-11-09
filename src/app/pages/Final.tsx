@@ -1,6 +1,6 @@
 import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { decideFinal, fillDevSpec, targetsOf, type Approval, type ChangeItem, type Job } from '../../api'
+import { decideFinal, fillDevSpec, getOpenItems, targetsOf, type Approval, type ChangeItem, type Job, type OpenItem } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
@@ -119,12 +119,23 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided, 
   const [error, setError] = useState('')
   const ids = { comment: useId() }
   const last = record.approval
+  const [openItems, setOpenItems] = useState<OpenItem[] | null>(null)
+  const [answers, setAnswers] = useState<Record<string, string>>({})   // 항목 ID → 고른 답 (없으면 추천안)
+  useEffect(() => {
+    if (last?.decision === 'approve') return
+    let alive = true
+    getOpenItems(project, version).then((r) => { if (alive) setOpenItems(r) }).catch((e) => { if (alive) setError((e as Error).message) })
+    return () => { alive = false }
+  }, [project, version, last?.decision])
+  const answerOf = (i: OpenItem) => answers[i.id] ?? i.recommended
+  const unanswered = (openItems ?? []).filter((i) => !answerOf(i).trim()).length
   const picked = Object.values(items)
   const send = async (decision: 'approve' | 'changes') => {
     setSending(true)
     setError('')
     try {
       await decideFinal({ project, version, decision, comment,
+        answers: decision === 'approve' ? Object.fromEntries((openItems ?? []).map((i) => [i.id, answerOf(i)])) : undefined,
         targets: decision === 'changes' ? (['spec', 'erd'] as const).filter((t) => stages[t]) : undefined,
         items: decision === 'changes' ? picked : undefined })
       setMode('idle')
@@ -171,9 +182,18 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided, 
             ))}
           </ul>
         )}
+        {canDecide && !approved && mode === 'idle' && (openItems?.length ?? 0) > 0 && (
+          <section aria-label="남은 확인 항목" className="space-y-2 rounded-md border border-line p-3">
+            <h3 className="text-label font-semibold">남은 확인 항목 {openItems!.length}건 <span className="font-normal text-fg-3">· 여기서 답하고 승인하면 개발 스펙에 반영됩니다 (고르지 않으면 추천안)</span></h3>
+            <ul className="max-h-96 space-y-2 overflow-auto">
+              {openItems!.map((i) => <OpenItemRow key={i.id} item={i} value={answerOf(i)} onChange={(v) => setAnswers((a) => ({ ...a, [i.id]: v }))} />)}
+            </ul>
+          </section>
+        )}
         {mode === 'idle' && (canDecide || (approved && developAction)) && (
           <div className="flex flex-wrap items-center gap-2">
-            {canDecide && !approved && <Button variant="ok" icon={<SealCheck />} disabled={sending} onClick={() => void send('approve')}>최종 승인</Button>}
+            {canDecide && !approved && <Button variant="ok" icon={<SealCheck />} disabled={sending || openItems === null || unanswered > 0}
+              title={unanswered > 0 ? `답을 적어야 하는 항목이 ${unanswered}건 남았습니다` : undefined} onClick={() => void send('approve')}>최종 승인</Button>}
             {canDecide && (
               <Button icon={<ArrowBendUpLeft />} disabled={sending} onClick={() => setMode('changes')}
                 title={approved ? '승인을 거두고 고칠 내용과 함께 돌려보냅니다' : undefined}>
@@ -296,6 +316,28 @@ function ItemPicker({ title, stage, options, items, onToggle }: {
         {shown.length === 0 && <li className="py-1 text-small text-fg-3">없음</li>}
       </ul>
     </div>
+  )
+}
+
+/** 남은 확인 항목 한 줄: 선택지(추천 표시)를 고르거나 직접 적는다 */
+function OpenItemRow({ item, value, onChange }: { item: OpenItem; value: string; onChange: (value: string) => void }) {
+  const choices = [...new Set([item.recommended, ...item.options].filter(Boolean))]
+  const [typing, setTyping] = useState(choices.length === 0)
+  return (
+    <li className="text-small">
+      <p className="font-medium">{item.title}</p>
+      <p className="text-micro text-fg-3">{item.detail}{item.where.length ? ` · ${item.where.slice(0, 5).join(', ')}${item.where.length > 5 ? ` 외 ${item.where.length - 5}` : ''}` : ''}</p>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        {choices.length > 0 && (
+          <select aria-label={`${item.title} 답`} value={typing ? '__type' : value} className="min-h-8 max-w-full rounded-md border border-control bg-card px-2 text-small"
+            onChange={(e) => { const typed = e.target.value === '__type'; setTyping(typed); onChange(typed ? '' : e.target.value) }}>
+            {choices.map((c) => <option key={c} value={c}>{c}{c === item.recommended ? ' (추천)' : ''}</option>)}
+            <option value="__type">직접 입력</option>
+          </select>
+        )}
+        {typing && <TextInput aria-label={`${item.title} 직접 입력`} value={value} onChange={(e) => onChange(e.target.value)} placeholder="답을 적으세요" />}
+      </div>
+    </li>
   )
 }
 

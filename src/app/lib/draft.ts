@@ -230,6 +230,11 @@ export function useDraft(design: Design, project: string, version: string, canSa
     })
   }, [update])
 
+  /** 의미 검토 지적 여러 개를 한 번에 같은 처리로 ('모두 반영'). 이미 고른 메모는 둔다 */
+  const setDispositions = useCallback((issueIds: string[], choice: DispositionChoice) => {
+    update((s) => ({ ...s, dispositions: { ...s.dispositions, ...Object.fromEntries(issueIds.map((id) => [id, { choice, note: s.dispositions?.[id]?.note ?? '' }])) } }))
+  }, [update])
+
   // 확정은 누르자마자 다른 버전 화면으로 넘어가므로(이 화면이 사라져 지연 저장이 취소됨) 바로 쓴다.
   // updatedAt을 확정 시각과 같게 두어 '확정(내보내기) 뒤 고친 것'을 updatedAt > at으로 알 수 있게 한다
   const finalize = useCallback((page: ConfirmStage) => {
@@ -321,6 +326,7 @@ export function useDraft(design: Design, project: string, version: string, canSa
     clearEntityEdits,
     setAnswer,
     setChecked,
+    setDispositions,
     applyMany,
     setDisposition,
     finalize,

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   approveWork, assignMany, assignWork, getLayout, getWork, getWorkItem, rejectWork, saveLayout, submitWork, suggestLayout,
   type LayoutData, type LayoutSection, type WorkItem, type WorkOverview, type WorkStatus,
+  saveWorkBrief, type BriefEdit,
 } from '../../api'
 import { formatDate } from '../../labels'
 import { repoChanged } from '../lib/repo'
@@ -13,12 +14,13 @@ import { Badge, Button, cx, ErrorNote, Loading, TextArea, TextInput } from './ui
 const TONE: Record<WorkStatus, 'neutral' | 'info' | 'warn' | 'ok' | 'danger'> = {
   unassigned: 'neutral', assigned: 'warn', in_progress: 'info', review: 'info', done: 'ok', rejected: 'danger',
 }
-type Filter = 'all' | 'unassigned' | 'active' | 'done'
+type Filter = 'all' | 'unassigned' | 'active' | 'done' | 'todo'
 const FILTERS: { id: Filter; label: string; test: (i: WorkItem) => boolean }[] = [
   { id: 'all', label: '전체', test: () => true },
   { id: 'unassigned', label: '미배정', test: (i) => i.status === 'unassigned' },
   { id: 'active', label: '진행 중', test: (i) => ['assigned', 'in_progress', 'review', 'rejected'].includes(i.status) },
   { id: 'done', label: '완료', test: (i) => i.status === 'done' },
+  { id: 'todo', label: 'TODO·빈 로직', test: (i) => i.todo_count > 0 || i.empty_holes > 0 },
 ]
 
 /**
@@ -98,7 +100,7 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
           <span className="text-micro font-medium text-fg-3">{label}</span>
           <Badge tone={TONE[i.status]}>{i.status_label}{i.self_approved ? ' · 본인 승인' : ''}</Badge>
           <button type="button" className="text-micro text-fg-3 tabular-nums hover:underline" onClick={() => setOpen(open === i.key ? null : i.key)} title="파일 목록 보기">
-            파일 {i.file_count}{i.empty_holes ? ` · 빈 로직 ${i.empty_holes}` : ''}{i.ai_files ? ` · AI ${i.ai_files}` : ''}</button>
+            파일 {i.file_count}{i.empty_holes ? ` · 빈 로직 ${i.empty_holes}` : ''}{i.todo_count ? ` · TODO ${i.todo_count}` : ''}{i.ai_files ? ` · AI ${i.ai_files}` : ''}</button>
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {manage && i.status !== 'review' ? (
@@ -124,6 +126,11 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
         </div>
         {i.reason && i.status === 'rejected' && <p className="mt-1 text-small text-danger">반려 사유: {i.reason}</p>}
         {i.branch && <p className="mt-1 truncate text-micro text-fg-3" title={i.branch}>{i.branch}{i.ahead ? ` · 커밋 ${i.ahead}개 앞섬` : ''}{i.behind ? ` · dev보다 ${i.behind}개 뒤처짐` : ''}</p>}
+        {open === i.key && i.todo_count > 0 && (
+          <ul aria-label="TODO" className="mt-2 max-h-48 space-y-0.5 overflow-auto rounded-md bg-warn-soft p-2 text-small">
+            {i.todos.map((t, n) => <li key={n}><code className="text-micro">{t.function}</code> {t.reason}</li>)}
+          </ul>
+        )}
         {open === i.key && (
           <ul className="mt-2 max-h-48 overflow-auto rounded-md bg-sunken p-2 font-mono text-micro">
             {i.files.map((f) => <li key={f}>{f}</li>)}
@@ -236,7 +243,7 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
       </div>
       <p className="text-micro text-fg-3">업무 영역은 위 '화면 구성 · 업무 영역'에서 묶습니다 (비슷한 메뉴끼리 · AI 제안 가능). 영역마다 화면·서버·모두 선택 중에 고르거나 칸의 체크로 하나씩 고릅니다. '화면 전체'·'서버 전체'로 프론트·백엔드 담당에게 나눠 맡길 수 있습니다.</p>
       {!manage && <p className="text-micro text-fg-3">{NEEDS.develop} (배정·승인·반려)</p>}
-      {dialog && 'brief' in dialog && <BriefDialog project={project} item={dialog.brief} onClose={() => setDialog(null)} />}
+      {dialog && 'brief' in dialog && <BriefDialog project={project} item={dialog.brief} canEdit={manage} onClose={() => setDialog(null)} />}
       {dialog && 'submit' in dialog && (
         <NoteDialog title={`제출 · ${dialog.submit.title}`} label="검토자에게 남길 말 (선택)" action="제출" onClose={() => setDialog(null)}
           onSend={(text) => act(dialog.submit.key, () => submitWork(project, dialog.submit.key, text), '제출했습니다. 다른 개발자가 승인·반려하면 알림이 옵니다.').then(() => setDialog(null))} />
@@ -249,14 +256,39 @@ export function WorkBundles({ project, user, refreshKey }: { project: string; us
   )
 }
 
-function BriefDialog({ project, item, onClose }: { project: string; item: WorkItem; onClose: () => void }) {
+function BriefDialog({ project, item, canEdit, onClose }: { project: string; item: WorkItem; canEdit: boolean; onClose: () => void }) {
   const [text, setText] = useState<string | null>(null)
+  const [edit, setEdit] = useState<BriefEdit | null>(null)
+  const [draft, setDraft] = useState<string | null>(null)   // 고치는 중인 내용
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  useEffect(() => { getWorkItem(project, item.key).then((r) => setText(r.brief)).catch((e) => setError((e as Error).message)) }, [project, item.key])
+  useEffect(() => { getWorkItem(project, item.key).then((r) => { setText(r.brief); setEdit(r.brief_edit) }).catch((e) => setError((e as Error).message)) }, [project, item.key])
+  const save = (value: string) => {
+    setSaving(true)
+    setError('')
+    saveWorkBrief(project, item.key, value, text ?? '')
+      .then((r) => { setText(r.brief); setEdit(r.edit); setDraft(null) })
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setSaving(false))
+  }
   return (
     <Modal wide title={`무엇을 어떻게 · ${item.title}`} onClose={onClose}>
-      {error ? <p className="text-danger">{error}</p> : text === null ? <Loading label="작업 설명을 읽는 중" lines={4} />
+      {error && <p className="text-danger">{error}</p>}
+      {text === null ? !error && <Loading label="작업 설명을 읽는 중" lines={4} />
+        : draft !== null ? <TextArea rows={22} aria-label="작업 설명 고치기" value={draft} onChange={(e) => setDraft(e.target.value)} />
         : <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-md bg-sunken p-3 text-small">{text}</pre>}
+      {edit && <p className="text-micro text-fg-3">{edit.by.name}님이 {formatDate(edit.at)}에 고친 내용입니다</p>}
+      {canEdit && text !== null && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {draft !== null ? <>
+            <Button variant="ghost" disabled={saving} onClick={() => setDraft(null)}>취소</Button>
+            <Button variant="primary" disabled={saving || !draft.trim()} title="저장하면 담당자가 VS Code 확장에서 코드를 다시 받을 때 TASK.md에 반영됩니다" onClick={() => save(draft)}>저장</Button>
+          </> : <>
+            {edit && <Button variant="ghost" disabled={saving} onClick={() => save('')}>자동 설명으로 되돌리기</Button>}
+            <Button onClick={() => setDraft(text)}>수정</Button>
+          </>}
+        </div>
+      )}
       {item.history.length > 0 && (
         <ul className="text-micro text-fg-3">{item.history.map((h, n) => <li key={n}>{formatDate(h.at)} · {h.by.name} · {h.what}</li>)}</ul>
       )}

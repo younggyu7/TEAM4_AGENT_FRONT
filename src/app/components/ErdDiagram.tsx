@@ -1,7 +1,8 @@
-import { ArrowsIn, ArrowsOut, HandGrabbing, MagnifyingGlassMinus, MagnifyingGlassPlus } from '@phosphor-icons/react'
+import { ArrowsIn, ArrowsOut, HandGrabbing, MagnifyingGlassMinus, MagnifyingGlassPlus, X } from '@phosphor-icons/react'
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { ident } from '../lib/erd'
-import { cx, Segmented } from './ui'
+import { cx, IconButton, Segmented } from './ui'
 
 let ready: Promise<typeof import('mermaid').default> | null = null
 
@@ -39,8 +40,8 @@ type Zoom = 'fit' | 'full'
 type Tool = 'hand' | 'in' | 'out'
 
 /** 편집할 때마다 다시 그리면 무거우므로 입력이 잠깐 멈춘 뒤 그린다. 그리는 동안은 이전 그림을 둔다.
- *  '전체 보기'는 상자에 맞춰 줄이고, '원래 크기'는 글자를 읽을 수 있게 두고 가운데 테이블로 스크롤한다. */
-export function ErdDiagram({ code, label, centerId, height = 460, onPick, entityIds = [], defaultZoom = 'fit' }: {
+ *  '전체 보기'는 큰 팝업에서 화면에 맞춰 보여 주고, '원래 크기'는 글자를 읽을 수 있게 두고 가운데 테이블로 스크롤한다. 마우스 휠로 확대·축소한다. */
+export function ErdDiagram({ code, label, centerId, height = 460, onPick, entityIds = [], defaultZoom = 'fit', popup = false }: {
   code: string
   label: string
   centerId?: string
@@ -49,6 +50,8 @@ export function ErdDiagram({ code, label, centerId, height = 460, onPick, entity
   onPick?: (entityId: string) => void
   entityIds?: string[]
   defaultZoom?: Zoom
+  /** 큰 팝업 안에서 그리는 중 ('전체 보기'가 또 팝업을 열지 않는다) */
+  popup?: boolean
 }) {
   const id = 'erd' + useId().replace(/[^a-zA-Z0-9]/g, '')
   const [svg, setSvg] = useState('')
@@ -58,6 +61,8 @@ export function ErdDiagram({ code, label, centerId, height = 460, onPick, entity
   // 확대·축소한 배율 (null이면 '전체 보기'·'원래 크기'를 따른다). natural = 그림의 원래 너비
   const [scale, setScale] = useState<number | null>(null)
   const [natural, setNatural] = useState(0)
+  const [big, setBig] = useState(false)   // 전체 보기 팝업
+  const current = useRef<number | null>(null)   // 휠은 그리기 전에 연달아 오므로 배율을 바로 적어 둔다
   const box = useRef<HTMLDivElement>(null)
   const drag = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null)
   const dragged = useRef(false)
@@ -72,16 +77,28 @@ export function ErdDiagram({ code, label, centerId, height = 460, onPick, entity
     const el = box.current
     const svgEl = el?.querySelector('svg')
     if (!el || !svgEl || !natural) return
-    const cur = scale ?? svgEl.getBoundingClientRect().width / natural
+    const cur = current.current ?? svgEl.getBoundingClientRect().width / natural
     const next = Math.min(4, Math.max(0.1, cur * factor))
     const r = el.getBoundingClientRect()
     const ox = clientX - r.left + el.scrollLeft, oy = clientY - r.top + el.scrollTop
+    current.current = next
     setScale(next)
     requestAnimationFrame(() => {
       el.scrollLeft = ox * (next / cur) - (clientX - r.left)
       el.scrollTop = oy * (next / cur) - (clientY - r.top)
     })
   }
+
+  // 마우스 휠로 확대·축소 (React의 onWheel은 페이지 스크롤을 막지 못해 직접 건다)
+  const zoomLatest = useRef(zoomAt)
+  zoomLatest.current = zoomAt
+  useEffect(() => {
+    const el = box.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => { e.preventDefault(); zoomLatest.current(e.clientX, e.clientY, e.deltaY < 0 ? 1.12 : 1 / 1.12) }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -113,7 +130,7 @@ export function ErdDiagram({ code, label, centerId, height = 460, onPick, entity
         <Segmented<Zoom>
           label="ERD 크기"
           value={zoom}
-          onChange={(z) => { setZoom(z); setScale(null) }}
+          onChange={(z) => { setZoom(z); setScale(null); current.current = null; if (z === 'fit' && !popup) setBig(true) }}
           options={[{ value: 'fit', label: '전체 보기' }, { value: 'full', label: '원래 크기' }]}
         />
       </div>
@@ -178,9 +195,32 @@ export function ErdDiagram({ code, label, centerId, height = 460, onPick, entity
         {tool !== 'hand'
           ? <>{tool === 'in' ? '확대' : '축소'}: 더블클릭한 곳을 중심으로 {tool === 'in' ? '키웁니다' : '줄입니다'} · 누른 채 끌면 옮깁니다 · 테이블을 눌러 편집하려면 손 모양으로</>
           : zoom === 'fit' && scale === null
-          ? <><ArrowsOut size={12} aria-hidden="true" />끌어서 옮기기 · 글자가 작으면 '원래 크기'나 확대(+)로 보세요{onPick && ' · 테이블을 누르면 편집 화면으로 갑니다'}</>
-          : <><ArrowsIn size={12} aria-hidden="true" />끌어서 이웃 테이블로 옮깁니다{onPick && ' · 테이블을 누르면 편집 화면으로 갑니다'}</>}
+          ? <><ArrowsOut size={12} aria-hidden="true" />끌어서 옮기기 · 마우스 휠로 확대·축소{onPick && ' · 테이블을 누르면 편집 화면으로 갑니다'}</>
+          : <><ArrowsIn size={12} aria-hidden="true" />끌어서 이웃 테이블로 옮깁니다 · 마우스 휠로 확대·축소{onPick && ' · 테이블을 누르면 편집 화면으로 갑니다'}</>}
       </p>
+      {big && <ErdPopup code={code} label={label} centerId={centerId} entityIds={entityIds} onPick={onPick} onClose={() => setBig(false)} />}
     </div>
+  )
+}
+
+/** 전체 보기: 화면을 거의 다 쓰는 팝업 (Esc·바깥 누르기·닫기로 닫는다). 테이블을 누르면 닫고 편집 화면으로 간다 */
+function ErdPopup({ code, label, centerId, entityIds, onPick, onClose }: { code: string; label: string; centerId?: string; entityIds: string[]; onPick?: (entityId: string) => void; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={label} className="fixed inset-0 z-50 flex bg-black/50 p-4" onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-line bg-card p-4">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <h2 className="truncate text-subtitle font-medium">{label}</h2>
+          <IconButton label="닫기" icon={<X />} onClick={onClose} />
+        </div>
+        <ErdDiagram popup code={code} label={label} centerId={centerId} height={window.innerHeight - 170} entityIds={entityIds}
+          onPick={onPick ? (id) => { onClose(); onPick(id) } : undefined} />
+      </div>
+    </div>,
+    document.body,
   )
 }

@@ -56,6 +56,7 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
   // 답하지 않은 질문 중 추천안이 있는 것 (초안이 이미 그 답을 가정했으므로 그대로 확정하는 경우가 많다)
   const fillable = items.filter((i) => i.question?.recommended && !i.resolved)
   const fillRecommended = () => fillable.forEach((i) => draft.setAnswer(i.question!.question_id, i.question!.recommended!))
+  const remarks = items.filter((i) => i.kind === 'remark' && !i.resolved && i.issue)
 
   return (
     <div className="flex flex-col">
@@ -81,6 +82,12 @@ export function ReviewPanel({ items, draft, onJump, finalizedAt, subject, blockR
           {fillable.length > 0 && (
             <Button size="sm" variant="ghost" icon={<MagicWand />} onClick={fillRecommended} disabled={draft.readOnly}>
               남은 질문 {fmt(fillable.length)}개 추천안으로 답하기
+            </Button>
+          )}
+          {remarks.length > 0 && (
+            <Button size="sm" variant="ghost" icon={<CheckCircle />} disabled={draft.readOnly} title="남은 의미 검토 지적을 모두 '반영함'으로 표시합니다 (ERD를 자동으로 고치지는 않습니다)"
+              onClick={() => draft.setDispositions(remarks.map((i) => i.issue!.issue_id), 'applied')}>
+              지적 {fmt(remarks.length)}건 모두 반영
             </Button>
           )}
           <Checkbox checked={onlyOpen} onChange={(v) => { setOnlyOpen(v); setLimit(PAGE) }} label="남은 것만" />
