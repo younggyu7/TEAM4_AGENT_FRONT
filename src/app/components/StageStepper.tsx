@@ -36,12 +36,12 @@ function checkStatus(d?: Develop): { text: string; tone: Tone; done: boolean } {
  * 맨 위 진행 단계 (개발 방법론 순서): 요구사항 분석 → 설계 → 개발 범위 확정 → 개발 진행 → 테스트(검증) → 실행·마무리.
  * 굵은 글씨는 단계 이름, 작은 글씨는 이 화면의 이름(기능 명세·ERD·최종 산출물·최종 개발물)과 버전이다. 안쪽 버튼·문구는 그대로 쓴다.
  * 앞 단계를 확정해야 다음 단계가 '진행 가능'으로 바뀌지만, 보기는 언제든 할 수 있다. 4~6은 최종 승인한 뒤 열리는
- * 최종 개발물 화면의 1단계 개발(4·5: 자동 확인은 1단계 안)과 2·3단계 실행·Git(6)으로 간다.
+ * 최종 개발물 화면의 1단계 개발(4), 2단계 실행·자동 확인(5), 3단계 Git(6)으로 간다.
  * '산출물 보기'는 단계가 아니라 지금 버전의 산출물(판단 기록·이슈·추적 …)을 읽기만 하는 화면이라 단계 줄 밖 버튼으로 둔다.
  */
 export function StageStepper({ page, focus, version, targets, finalized, decision, onGo, develop, git }: {
   page: Page
-  /** 최종 개발물 화면의 안쪽 단계 ('1'·'2'·'3', 'check' = 1단계의 자동 확인) */
+  /** 최종 개발물 화면의 안쪽 단계 ('1'·'2'·'3', 예전 주소 'check'는 2단계) */
   focus?: string
   version: string                      // 산출물 보기가 여는 버전 (지금 보는 버전)
   targets: Record<StagePage, string>   // 각 단계에서 열 버전 (v2 / v2.1 / v2.1.1)
@@ -57,7 +57,7 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
   const done = (id: StagePage) => Boolean(finalized[id])
   const approved = decision?.decision === 'approve'
   const onDevelop = page === 'develop'
-  const devStep = focus === '2' || focus === '3' ? 'run' : focus === 'check' ? 'check' : 'build'
+  const devStep = focus === '3' ? 'run' : focus === '2' || focus === 'check' ? 'check' : 'build'
   const check = checkStatus(develop)
   const steps: { key: string; label: string; screen: string; status: string; tone: Tone; done: boolean; current: boolean
     locked?: string; go: () => void }[] = [
@@ -75,14 +75,14 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
       status: !approved ? '최종 승인 후' : develop?.at ? `개발 ${short(develop.at)}` : '개발 대기',
       tone: develop?.at ? 'ok' : 'muted', done: Boolean(develop?.at), current: onDevelop && devStep === 'build',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '1') },
-    { key: 'check', label: '테스트(검증)', screen: '자동 확인',
+    { key: 'check', label: '테스트(검증)', screen: '실행 · 자동 확인',
       status: !approved ? '최종 승인 후' : check.text, tone: approved ? check.tone : 'muted', done: approved && check.done,
       current: onDevelop && devStep === 'check',
-      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', 'check') },
-    { key: 'run', label: '실행·마무리', screen: '로컬 서버 · Git',
+      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '2') },
+    { key: 'run', label: '실행·마무리', screen: 'Git',
       status: !approved ? '최종 승인 후' : !develop ? '개발 후' : git ? `Git 올림 ${short(git.at)}` : 'Git 올리기 전',
       tone: git ? 'ok' : 'muted', done: Boolean(git), current: onDevelop && devStep === 'run',
-      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '2') },
+      locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '3') },
   ]
   return (
     <nav aria-label="진행 단계" className="@container mb-4">

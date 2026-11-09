@@ -27,7 +27,7 @@ const RUN: Record<PreviewStatus['status'], { label: string; tone: Tone }> = {
 }
 
 /**
- * 최종 개발물: 최종 승인한 최종본을 1 개발(코드 + 예시 데이터 화면) → 2 실행(Docker) → 3 Git 단계로 나눠 보여 준다.
+ * 최종 개발물: 최종 승인한 최종본을 1 개발(코드 + 예시 데이터 화면) → 2 실행(Docker)·자동 확인 → 3 Git 단계로 나눠 보여 준다.
  * 단계는 주소의 마지막 칸(focus)에 둔다 — 산출물 보기 '최종 개발하기'를 시작하면 1단계로 온다.
  * 위의 '결과물 미리보기'는 1단계면 예시 데이터 화면, 2·3단계면 실행 미리보기(새 탭에서 Docker를 켜고 앱 화면)를 연다.
  */
@@ -52,11 +52,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const [branches, setBranches] = useState<RepoBranch[]>([])
   const [remote, setRemote] = useState<GitSettings | null>(null)
   const developed = record?.develop
-  const step: Step = given === '2' || given === '3' ? given : '1'
-  // 맨 위 '테스트(검증)'에서 오면 1단계의 자동 확인 줄로 내려 보여 준다
-  useEffect(() => {
-    if (given === 'check' && record?.develop) document.getElementById('develop-check')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
-  }, [given, record?.develop])
+  const step: Step = given === '2' || given === 'check' ? '2' : given === '3' ? '3' : '1'   // 'check': 예전 주소 (자동 확인은 2단계)
   // 오른쪽 '업무 로직 현황'에서 파일을 고르면 1단계(코드 보기)로 옮긴다 (코드 보기가 그 파일을 연다)
   const [openPath, setOpenPath] = useState('')
   useEffect(() => {
@@ -141,8 +137,8 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
         ))}
       </ol>
 
-      {/* 이 단계의 작업 (1단계: 개발, 3단계: git) */}
-      {job && ((step === '1' && (job.source === 'develop' || job.source === 'check')) || (step === '3' && job.source === 'git')) && (
+      {/* 이 단계의 작업 (1단계: 개발, 2단계: 자동 확인, 3단계: git) */}
+      {job && ((step === '1' && job.source === 'develop') || (step === '2' && job.source === 'check') || (step === '3' && job.source === 'git')) && (
         <JobPanel job={job} project={project} onOpen={() => undefined} current={record.design_version} />
       )}
       {step === '1' && (
@@ -187,36 +183,6 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                   {developed.summary.todos.map((t, i) => <li key={i}><code className="text-micro">{t.function}</code> {t.rule} — <span className="text-fg-3">{t.reason}</span></li>)}
                 </ul>
               </details>
-            </Row>
-          )}
-          {developed && (
-            <Row label="자동 확인" id="develop-check">
-              {developed.check === undefined ? <span className="text-fg-3">기록 없음 — 아래 '다시 확인'으로 검사하세요</span>
-                : developed.check === null && developed.request ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — gen → dev 합치기 요청 #{developed.request}을 승인한 뒤 2단계에서 실행해 확인하세요</span>
-                : developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
-                : !developed.check.counts ? <span className="text-danger">{developed.check.message}</span>
-                : (
-                  <>
-                    <span className="flex flex-wrap gap-x-4 gap-y-1">
-                      <Badge tone={developed.check.ok ? 'ok' : 'danger'}>{developed.check.ok ? '통과' : '서버 오류 있음'}</Badge>
-                      <span>admin 로그인 · 조회 API {developed.check.apis}개</span>
-                      <span className="text-ok">정상 {developed.check.counts.ok}</span>
-                      {developed.check.counts.not_implemented > 0 && <span className="text-fg-2" title={developed.check.not_implemented?.join('\n')}>구현 대기(501) {developed.check.counts.not_implemented}</span>}
-                      {developed.check.counts.errors > 0 && <span className="text-danger">서버 오류 {developed.check.counts.errors}</span>}
-                      {developed.check.counts.other > 0 && <span className="text-warn" title={developed.check.other?.join('\n')}>그 밖 {developed.check.counts.other}</span>}
-                    </span>
-                    {(developed.check.errors?.length ?? 0) > 0 && <ul className="mt-1 font-mono text-micro text-danger">{developed.check.errors!.map((e) => <li key={e}>{e}</li>)}</ul>}
-                  </>
-                )}
-              {(developed.check?.log?.length ?? 0) > 0 && <div className="mt-1"><Log title={`실패 기록 ${developed.check!.log!.length}줄`} lines={developed.check!.log!} /></div>}
-              <span className="mt-2 flex flex-wrap items-center gap-3">
-                {developed.check?.at && <span className="text-small text-fg-3">확인한 시각 {formatDate(developed.check.at)}</span>}
-                {allowed && developed.backend && (
-                  <Button size="sm" disabled={job?.status === 'running'} title="지금 dev 코드를 Docker로 켜고 admin 로그인·조회 API를 검사합니다. 2단계에서 실행 중이면 다시 켭니다 (AI 사용 없음)"
-                    onClick={() => { setCheckError(''); startCheckJob(project, record.design_version, onFinished).catch((e) => setCheckError((e as Error).message)) }}>다시 확인</Button>
-                )}
-              </span>
-              {checkError && <span className="mt-1 block text-small text-danger">{checkError}</span>}
             </Row>
           )}
           <Row label="결과물">
@@ -281,6 +247,36 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                 </>
               )}
           </Row>
+          {developed && (
+            <Row label="자동 확인" id="develop-check">
+              {developed.check === undefined ? <span className="text-fg-3">기록 없음 — 아래 '다시 확인'으로 검사하세요</span>
+                : developed.check === null && developed.request ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — gen → dev 합치기 요청 #{developed.request}을 승인한 뒤 2단계에서 실행해 확인하세요</span>
+                : developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
+                : !developed.check.counts ? <span className="text-danger">{developed.check.message}</span>
+                : (
+                  <>
+                    <span className="flex flex-wrap gap-x-4 gap-y-1">
+                      <Badge tone={developed.check.ok ? 'ok' : 'danger'}>{developed.check.ok ? '통과' : '서버 오류 있음'}</Badge>
+                      <span>admin 로그인 · 조회 API {developed.check.apis}개</span>
+                      <span className="text-ok">정상 {developed.check.counts.ok}</span>
+                      {developed.check.counts.not_implemented > 0 && <span className="text-fg-2" title={developed.check.not_implemented?.join('\n')}>구현 대기(501) {developed.check.counts.not_implemented}</span>}
+                      {developed.check.counts.errors > 0 && <span className="text-danger">서버 오류 {developed.check.counts.errors}</span>}
+                      {developed.check.counts.other > 0 && <span className="text-warn" title={developed.check.other?.join('\n')}>그 밖 {developed.check.counts.other}</span>}
+                    </span>
+                    {(developed.check.errors?.length ?? 0) > 0 && <ul className="mt-1 font-mono text-micro text-danger">{developed.check.errors!.map((e) => <li key={e}>{e}</li>)}</ul>}
+                  </>
+                )}
+              {(developed.check?.log?.length ?? 0) > 0 && <div className="mt-1"><Log title={`실패 기록 ${developed.check!.log!.length}줄`} lines={developed.check!.log!} /></div>}
+              <span className="mt-2 flex flex-wrap items-center gap-3">
+                {developed.check?.at && <span className="text-small text-fg-3">확인한 시각 {formatDate(developed.check.at)}</span>}
+                {allowed && developed.backend && (
+                  <Button size="sm" disabled={job?.status === 'running'} title="지금 dev 코드를 Docker로 켜고 admin 로그인·조회 API를 검사합니다. 2단계에서 실행 중이면 다시 켭니다 (AI 사용 없음)"
+                    onClick={() => { setCheckError(''); startCheckJob(project, record.design_version, onFinished).catch((e) => setCheckError((e as Error).message)) }}>다시 확인</Button>
+                )}
+              </span>
+              {checkError && <span className="mt-1 block text-small text-danger">{checkError}</span>}
+            </Row>
+          )}
           {can(user, 'app_accounts') && <Row label="시연 계정"><Accounts project={project} running={run?.status === 'running'} /></Row>}
           <Row label="실행 방식">
             <span className="text-small text-fg-3">앱 폴더의 Dockerfile·docker-compose.yml로 프로젝트마다 따로 띄우는 독립 앱입니다 (화면·서버 한 이미지 + 앱 DB). 우리 서비스와 분리되고, 같은 네트워크의 팀원 PC에서도 위 주소로 열립니다.</span>
