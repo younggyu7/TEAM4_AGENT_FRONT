@@ -301,6 +301,11 @@ export async function saveGitSettings(project: string, body: { url: string; bran
   return (await (await post('/develop/git', { project, ...body })).json()) as GitSettings
 }
 
+/** 자동 확인 다시 하기: 지금 dev를 Docker로 켜고 admin 로그인·조회 API 검사 (LLM 없음) */
+export async function startCheck(project: string, version: string): Promise<Job> {
+  return ((await (await post('/develop/check', { project, version })).json()) as { job: Job }).job
+}
+
 /** 고른 브랜치를 원격에 올린다: dev(테스트 배포 신호) · main(릴리스한 고객 납품본) */
 export async function pushGit(project: string, version: string, target: 'dev' | 'main' = 'dev'): Promise<Job> {
   return ((await (await post('/develop/git/push', { project, version, target })).json()) as { job: Job }).job
@@ -549,7 +554,7 @@ export interface Job {
   project: string
   base: string
   // 기능 명세 → ERD / ERD 저장 / 확인 질문 답 반영 → 기능 명세 새 버전 / 문서 업로드 → 기능 명세 초안 / ERD 최종 확정 → 의미 검토
-  source: 'spec' | 'erd' | 'answers' | 'run' | 'review' | 'develop' | 'git'
+  source: 'spec' | 'erd' | 'answers' | 'run' | 'review' | 'develop' | 'git' | 'check'
   status: 'running' | 'done' | 'failed'
   message: string
   log: string[]

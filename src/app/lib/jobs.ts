@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { createVersion, getJob, getRunningJob, pushGit, startDevelop, startReview, startRun, type Dispositions, type Job } from '../../api'
+import { createVersion, getJob, getRunningJob, pushGit, startCheck, startDevelop, startReview, startRun, type Dispositions, type Job } from '../../api'
 
 // 새 버전 만들기 작업 상태. Agent 실행은 몇 분 걸리므로 화면을 옮겨도 진행 상황이 남도록 모듈에 둔다.
 // 새로고침·로그아웃하면 여기 상태는 비지만, 프로젝트를 열 때 서버에서 진행 중인 작업을 찾아 이어 본다 (resumeJob).
@@ -45,6 +45,11 @@ export async function startReviewJob(project: string, version: string, dispositi
 export async function startDevelopJob(project: string, version: string, ai: { build: boolean; logic?: boolean; model?: string; effort?: string; theme?: string },
   onFinish: (job: Job) => void): Promise<void> {
   track(await startDevelop(project, version, ai), onFinish)
+}
+
+/** 자동 확인 다시 하기 */
+export async function startCheckJob(project: string, version: string, onFinish: (job: Job) => void): Promise<void> {
+  track(await startCheck(project, version), onFinish)
 }
 
 /** git 올리기: 서버의 코드 폴더 → 화면·백엔드 저장소 */

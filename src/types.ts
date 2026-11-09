@@ -184,7 +184,7 @@ export interface VersionRecord {
       logic_functions?: string[]; logic_holes?: number
       todos: { function: string; rule: string; reason: string }[] }
     /** 자동 확인: admin 로그인 + 조회 API (서버 코드가 없으면 없음) */
-    check?: { ok: boolean; message?: string; apis?: number; counts?: { ok: number; not_implemented: number; errors: number; other: number }
+    check?: { ok: boolean; message?: string; at?: string; log?: string[]; apis?: number; counts?: { ok: number; not_implemented: number; errors: number; other: number }
       errors?: string[]; not_implemented?: string[]; other?: string[] } | null
   }
   /** 개발한 회차마다의 develop 기록 (다시 개발할 때마다 쌓인다, 개발 토큰 회차별 막대) */

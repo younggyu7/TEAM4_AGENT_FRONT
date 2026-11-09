@@ -2,6 +2,7 @@ import { ArrowRight, Check, CircleNotch, Copy, GitBranch, Play, Stop } from '@ph
 import { useEffect, useState, type ReactNode } from 'react'
 import { apiUrl, appUrl, getGitSettings, getPreviewAccounts, getPreviewStatus, getRepo, previewUrl, stopPreview, type GitSettings, type Job, type PreviewAccount, type PreviewStatus, type RepoBranch } from '../../api'
 import { formatDate } from '../../labels'
+import { startCheckJob } from '../lib/jobs'
 import { shortModel } from '../lib/pricing'
 import type { VersionRecord } from '../../types'
 import { GitDialog } from '../components/DevelopActions'
@@ -44,6 +45,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const [run, setRun] = useState<PreviewStatus | null>(null)
   const [error, setError] = useState('')
   const [gitOpen, setGitOpen] = useState(false)
+  const [checkError, setCheckError] = useState('')
   const [layoutSaved, setLayoutSaved] = useState(0)   // 화면 구성을 저장하면 작업 묶음을 바로 다시 읽는다 (영역이 바뀌므로)
   const [branch, setBranch] = useRepoBranch(project)
   const repoVersion = useRepoVersion()
@@ -140,7 +142,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
       </ol>
 
       {/* 이 단계의 작업 (1단계: 개발, 3단계: git) */}
-      {job && ((step === '1' && job.source === 'develop') || (step === '3' && job.source === 'git')) && (
+      {job && ((step === '1' && (job.source === 'develop' || job.source === 'check')) || (step === '3' && job.source === 'git')) && (
         <JobPanel job={job} project={project} onOpen={() => undefined} current={record.design_version} />
       )}
       {step === '1' && (
@@ -187,9 +189,10 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
               </details>
             </Row>
           )}
-          {developed?.check !== undefined && (
+          {developed && (
             <Row label="자동 확인" id="develop-check">
-              {developed.check === null && developed.request ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — gen → dev 합치기 요청 #{developed.request}을 승인한 뒤 2단계에서 실행해 확인하세요</span>
+              {developed.check === undefined ? <span className="text-fg-3">기록 없음 — 아래 '다시 확인'으로 검사하세요</span>
+                : developed.check === null && developed.request ? <span className="text-fg-3">다시 개발한 결과는 하지 않음 — gen → dev 합치기 요청 #{developed.request}을 승인한 뒤 2단계에서 실행해 확인하세요</span>
                 : developed.check === null ? <span className="text-fg-3">서버 코드가 없어 하지 않음</span>
                 : !developed.check.counts ? <span className="text-danger">{developed.check.message}</span>
                 : (
@@ -205,6 +208,15 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                     {(developed.check.errors?.length ?? 0) > 0 && <ul className="mt-1 font-mono text-micro text-danger">{developed.check.errors!.map((e) => <li key={e}>{e}</li>)}</ul>}
                   </>
                 )}
+              {(developed.check?.log?.length ?? 0) > 0 && <div className="mt-1"><Log title={`실패 기록 ${developed.check!.log!.length}줄`} lines={developed.check!.log!} /></div>}
+              <span className="mt-2 flex flex-wrap items-center gap-3">
+                {developed.check?.at && <span className="text-small text-fg-3">확인한 시각 {formatDate(developed.check.at)}</span>}
+                {allowed && developed.backend && (
+                  <Button size="sm" disabled={job?.status === 'running'} title="지금 dev 코드를 Docker로 켜고 admin 로그인·조회 API를 검사합니다. 2단계에서 실행 중이면 다시 켭니다 (AI 사용 없음)"
+                    onClick={() => { setCheckError(''); startCheckJob(project, record.design_version, onFinished).catch((e) => setCheckError((e as Error).message)) }}>다시 확인</Button>
+                )}
+              </span>
+              {checkError && <span className="mt-1 block text-small text-danger">{checkError}</span>}
             </Row>
           )}
           <Row label="결과물">

@@ -179,7 +179,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   // 다른 버전(예: ERD)을 열 때마다 다시 새 버전으로 끌려간다.
   useEffect(() => {
     if (myJob?.status !== 'done' || !myJob.new_version || autoOpened.has(myJob.id)) return
-    if (myJob.source === 'develop' || myJob.source === 'git') return   // 새 설계 버전이 아니다 (화면 그대로)
+    if (myJob.source === 'develop' || myJob.source === 'git' || myJob.source === 'check') return   // 새 설계 버전이 아니다 (화면 그대로)
     const page = myJob.source === 'answers' ? 'spec' : myJob.source === 'review' ? 'final' : 'erd'
     if (route.page !== page && !(page === 'final' && route.page === 'erd')) return
     autoOpened.add(myJob.id)
@@ -214,7 +214,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
               && v.approval.at < (record?.created_at ?? '')).sort((a, b) => b.approval!.at.localeCompare(a.approval!.at))[0]} />
         : route.page === 'develop'
           ? <DevelopView project={route.project} record={finalRecord} user={shell.user} step={route.focus}
-              job={myJob?.source === 'develop' || myJob?.source === 'git' ? myJob : undefined}
+              job={myJob?.source === 'develop' || myJob?.source === 'git' || myJob?.source === 'check' ? myJob : undefined}
               onStep={(step) => shell.navigate({ ...route, focus: step }, true)} onOpenDocs={() => open('overview')} onFinished={shell.onReloadProjects} />
         : <DocsView page={route.page} design={draft.merged} saved={design} project={route.project} version={route.version}
             versionRecord={record} versions={versions} finalizedAt={finalized.final} focus={route.focus} onOpen={open}
@@ -307,7 +307,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
         </p>
       )}
       {myJob && (route.page === 'erd' || (route.page === 'spec' && myJob.source === 'answers') || (route.page === 'final' && myJob.source === 'review')
-        || ((myJob.source === 'develop' || myJob.source === 'git') && (isDocPage(route.page) || route.page === 'final')))
+        || ((myJob.source === 'develop' || myJob.source === 'git' || myJob.source === 'check') && (isDocPage(route.page) || route.page === 'final')))
         && <JobPanel job={myJob} project={route.project} onOpen={openJobVersion} current={route.version} />}
       {approvedFinal && (route.page === 'spec' || route.page === 'erd') && (
         <p role="status" className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-ok/40 bg-ok-soft px-4 py-3 text-label text-ok">

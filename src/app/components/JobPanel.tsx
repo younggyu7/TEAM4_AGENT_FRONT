@@ -30,7 +30,7 @@ export function JobPanel({ job, project, onOpen, current }: {
     <Card aria-labelledby="job-title" className={cx('mb-4 border-2', tone)}>
       <div className="flex items-start justify-between gap-3 px-5 pt-4">
         <div className="min-w-0">
-          <p className="eyebrow">{job.source === 'run' ? 'Upload · 원본 요구서 → 요구사항·기능 명세 초안' : job.source === 'answers' ? 'Answers · 확인 질문 답 → 기능 명세' : job.source === 'spec' ? 'Export · 기능 명세 → ERD' : job.source === 'review' ? 'Final · ERD 최종 확정 → 최종본' : job.source === 'develop' ? 'Develop · 최종본 → 서비스 코드·미리보기' : job.source === 'git' ? 'Git · 서버 코드 → 화면·백엔드 저장소' : 'New version · ERD'}</p>
+          <p className="eyebrow">{job.source === 'run' ? 'Upload · 원본 요구서 → 요구사항·기능 명세 초안' : job.source === 'answers' ? 'Answers · 확인 질문 답 → 기능 명세' : job.source === 'spec' ? 'Export · 기능 명세 → ERD' : job.source === 'review' ? 'Final · ERD 최종 확정 → 최종본' : job.source === 'check' ? 'Check · 자동 확인' : job.source === 'develop' ? 'Develop · 최종본 → 서비스 코드·미리보기' : job.source === 'git' ? 'Git · 서버 코드 → 화면·백엔드 저장소' : 'New version · ERD'}</p>
           <h2 id="job-title" role="status" className={cx('mt-1 flex items-center gap-2 text-subtitle font-medium',
             job.status === 'failed' && 'text-danger', warn && 'text-warn', job.status === 'done' && !warn && 'text-ok')}>
             {running && <CircleNotch size={20} className="animate-spin" aria-hidden="true" />}
@@ -46,6 +46,8 @@ export function JobPanel({ job, project, onOpen, current }: {
                 ? '확정한 ERD로 최종본을 만듭니다: 지적 처리 기록 → DDL 검증·추적 검토(코드) → API 설계(바뀐 기능만, 개발 스펙 문서 10개). DDL에 오류가 있으면 최종본을 만들지 않습니다. 끝나면 최종본이 열립니다.'
                 : job.source === 'develop'
                 ? '개발 스펙으로 화면·API·DB 코드를 만들고(AI 업무 로직은 고른 경우만) 예시 데이터 화면을 빌드합니다. 처음에는 화면 패키지 설치로 1분쯤 걸립니다. 끝나면 위 단계 표시줄의 \'최종 개발물 미리보기\'로 봅니다.'
+                : job.source === 'check'
+                ? '지금 dev 코드를 Docker로 켜고 admin으로 로그인해 조회 API를 한 번씩 부릅니다 (LLM 없음, 처음엔 빌드로 몇 분).'
                 : job.source === 'git'
                 ? '서버의 코드 폴더를 화면·백엔드 저장소에 커밋·push합니다 (LLM 없음).'
                 : job.source === 'answers'
@@ -87,7 +89,7 @@ export function JobPanel({ job, project, onOpen, current }: {
             </Button>
           </div>
         )}
-        {job.status === 'done' && job.new_version && job.source !== 'review' && job.source !== 'develop' && job.source !== 'git' && !opened && (
+        {job.status === 'done' && job.new_version && job.source !== 'review' && job.source !== 'develop' && job.source !== 'git' && job.source !== 'check' && !opened && (
           <div className="flex justify-end">
             <Button variant="primary" icon={<ArrowRight />} onClick={() => onOpen(job.new_version!)}>{job.source === 'answers' || job.source === 'run' ? '기능 명세' : 'ERD'} v{job.new_version} 열기</Button>
           </div>
