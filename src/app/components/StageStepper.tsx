@@ -112,7 +112,7 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
                     aria-hidden="true"
                     className={cx(
                       'inline-flex size-5 shrink-0 items-center justify-center rounded text-micro font-semibold tabular-nums',
-                      s.spin ? 'bg-info-soft text-info' : s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
+                      s.spin ? 'bg-ok-soft text-ok' : s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
                     )}
                   >
                     {s.spin ? <CircleNotch size={12} weight="bold" className="animate-spin motion-reduce:animate-none" /> : s.done ? <Check size={12} weight="bold" /> : i + 1}
