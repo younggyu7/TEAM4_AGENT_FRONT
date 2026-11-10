@@ -166,6 +166,12 @@ export function specReview(design: Design, functions: FunctionSpec[], draft: Dra
   for (const issue of design.issues.filter(isOpen)) {
     const targets = splitTargets(issue.target_id)
     const fn = targets.map((t) => functions.find((f) => f.function_id === t) ?? byReq.get(t)?.[0]).find(Boolean)
+    if (issue.kind === 'EVIDENCE_NOT_FOUND') {
+      // 원문 근거: 기능이 없는 요구사항(비기능 등)도 보인다. '확인함' → 확정하면 새 버전부터 해결
+      items.push({ ...issueItem(issue, fn?.function_id ?? targets[0], fn?.name ?? targets[0], draft),
+        detail: `Agent가 이 요구사항의 인용문을 원문에서 찾지 못했습니다${issue.status === 'UNRESOLVED' ? ' (다시 시도해도 못 찾아 멈춤)' : ''}. 원문에 그 내용이 있는지 직접 확인하고 '확인함'을 누르세요. 기능 명세를 확정(내보내기)하면 새 버전부터 해결로 바뀌어 '원문 근거 연결' 완료 조건이 충족됩니다.` })
+      continue
+    }
     if (!fn) continue
     items.push(issueItem(issue, fn.function_id, fn.name, draft))
   }

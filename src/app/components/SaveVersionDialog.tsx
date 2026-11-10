@@ -51,6 +51,9 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
   const confirms = useMemo(() => (mode === 'spec' ? draft.functions.flatMap((f) => f.business_rules
     .filter((r) => Boolean(ruleMark(r)) && draft.state.checked[assumptionId(f.function_id, r)])
     .map((rule) => ({ function_id: f.function_id, rule }))) : []), [mode, draft.functions, draft.state.checked])
+  // '확인함'으로 원문을 확인한 근거 지적 → 내보내면 새 버전에서 해결 ('원문 근거 연결' 충족, 다시 검사해도 열지 않음)
+  const evidence = mode === 'spec' ? design.issues.filter((i) => i.kind === 'EVIDENCE_NOT_FOUND' && i.status !== 'RESOLVED'
+    && draft.state.checked[`i:${i.issue_id}`]).map((i) => i.issue_id) : []
   // 기능 명세 새 버전: 'AI로 답 반영'(새 답이 있을 때) 또는 확정한 기능 명세의 '다시 만들기'
   const answering = (Boolean(aiAnswers) && freshIds.length > 0) || Boolean(redo)
   const dispositions = mode === 'erd' ? draft.state.dispositions ?? {} : {}
@@ -99,7 +102,7 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
           : mode === 'spec'
           ? {
               project, base: version, source: 'spec', title, feedback,
-              design: draft.merged, functions_md: md,
+              design: evidence.length ? { ...draft.merged, confirm_issues: evidence } : draft.merged, functions_md: md,
               confirm_rules: confirms.length ? confirms : undefined,
               spec_summary: specChangeText(design.functions, draft.state.functions),
             }
