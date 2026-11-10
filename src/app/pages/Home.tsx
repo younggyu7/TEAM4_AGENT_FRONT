@@ -1,7 +1,7 @@
 import { ArrowRight, FileText, SlackLogo, TreeStructure, UploadSimple, Warning } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { getLlmOptions, listPickMembers, type LlmOptions, type PickMember, type SlackConnected } from '../../api'
-import { NoticeItem, useNotices } from '../components/Notices'
+import { MarkAllRead, NoticeItem, useNotices } from '../components/Notices'
 import { MyWorkCard } from '../components/MyWork'
 import { formatDate } from '../../labels'
 import type { Project } from '../../types'
@@ -133,13 +133,16 @@ export function Home({ shell }: { shell: ShellBase }) {
   )
 }
 
-/** 나에게 온 알림 전체 (내 역할 기준, 모든 프로젝트): 상태 알림 + 일 알림. 누르면 그 화면으로, '확인'을 누르면 사라진다 */
+/** 나에게 온 알림 전체 (내 역할 기준, 모든 프로젝트): 상태 알림 + 일 알림. 누르면 그 화면으로, '읽음'을 누르면 사라진다 */
 function NoticesCard({ navigate, reloadKey }: { navigate: ShellBase['navigate']; reloadKey: unknown }) {
-  const { list, dismiss } = useNotices(reloadKey)
+  const { list, dismiss, dismissAll } = useNotices(reloadKey)
   return (
     <Card aria-labelledby="my-notices">
       <CardHeader eyebrow="Notices" title="나에게 온 알림" titleId="my-notices"
-        actions={<span className="text-label font-medium tabular-nums">{list?.length ?? 0}건</span>} />
+        actions={<span className="flex items-center gap-2">
+          {list && list.length > 0 && <MarkAllRead onClick={() => dismissAll(list)} />}
+          <span className="text-label font-medium tabular-nums">{list?.length ?? 0}건</span>
+        </span>} />
       {list === null ? <Loading label="알림을 불러오는 중" lines={2} /> : list.length === 0 ? (
         <p className="px-5 pb-5 text-small text-fg-3">새 알림이 없습니다.</p>
       ) : (
