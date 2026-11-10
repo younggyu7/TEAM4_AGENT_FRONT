@@ -179,7 +179,7 @@ export function ReviewRow({ item, draft, onJump, compact, by }: { item: ReviewIt
           <Checkbox
             checked={item.resolved}
             onChange={(v) => draft.setChecked(item.id, v)}
-            label={item.kind === 'assumption' ? '가정 맞음' : item.kind === 'unconfirmed' ? '추천안 맞음' : '반영함'}
+            label={item.kind === 'assumption' ? '가정 맞음' : item.kind === 'unconfirmed' ? '추천안 맞음' : item.issue?.kind === 'EVIDENCE_NOT_FOUND' ? '원문 확인함' : '반영함'}
             describedBy={item.detail ? detailId : undefined}
           />
         )}
