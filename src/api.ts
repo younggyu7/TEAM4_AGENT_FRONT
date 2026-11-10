@@ -625,7 +625,7 @@ export async function createVersion(body: CreateVersionBody): Promise<Job> {
 }
 
 /** ERD 화면에서 정한 의미 검토 지적 처리 (이슈 ID → 처리·메모) */
-export type DispositionChoice = 'applied' | 'not_issue' | 'later'
+export type DispositionChoice = 'applied' | 'not_issue' | 'later' | 'confirmed'   // confirmed: 추적 검토 지적을 '반영함'으로 확인 (서버가 다시 열지 않음)
 export type Dispositions = Record<string, { choice: DispositionChoice; note: string }>
 
 /** ERD 최종 확정: 지적 처리를 남기고 DDL 검증·추적 검토·API 설계로 최종본(v<ERD>.1)을 만든다 (의미 검토는 다시 하지 않음). */

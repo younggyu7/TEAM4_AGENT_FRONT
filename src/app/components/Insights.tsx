@@ -12,7 +12,7 @@ import { MembersCard } from './MembersCard'
 import { AccessTokenCard, ExtensionCard } from './MyWork'
 import { RepoCard } from './RepoCard'
 import { can, type User } from '../lib/session'
-import { Badge, Card, CardHeader, compact, cx, fmt, Loading } from './ui'
+import { Badge, Card, CardHeader, compact, cx, duration, fmt, Loading } from './ui'
 
 /* ============================================================ 작업 화면 오른쪽 */
 type Summary = { total: number; done: number; requiredLeft: number }
@@ -52,7 +52,7 @@ export function WorkspaceInsights({ design, project, version, reviews, finalized
         <>
           <ProgressCard design={design} reviews={reviews} finalized={finalized} page={page} />
           {log && <ChangeLogCard log={log} />}
-          <TokenCard usages={usages} version={version} />
+          <TokenCard usages={usages} version={version} elapsed={record?.elapsed} />
           <IssuesCard design={design} />
           {project && <MembersCard project={project.id} canEdit={canEditMembers} />}
         </>
@@ -191,7 +191,7 @@ function ReviewProgress({ name, review, finalizedAt, current, note, noteTone }: 
   )
 }
 
-function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version: string }) {
+function TokenCard({ usages, version, elapsed }: { usages: Load<VersionUsage[]>; version: string; elapsed?: number }) {
   // 이 버전을 만든 모델 (검토 보고서 'LLM 사용량'의 '- 모델:' 줄. 예전 버전은 기록 없음)
   const model = usages.state === 'ready' ? usages.data.find((u) => u.version === version)?.usage?.model : undefined
   return (
@@ -221,6 +221,7 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
                   <dt className="text-small text-fg-3">이 버전 (v{version})</dt>
                   <dd className="mt-1 text-title font-medium tabular-nums">{cur ? compact(cur.input + cur.output) : '—'}</dd>
                   <dd className="text-micro text-fg-3 tabular-nums">{cur ? `호출 ${fmt(cur.calls)}회` : '기록 없음'}</dd>
+                  {elapsed !== undefined && <dd className="text-micro text-fg-3 tabular-nums">걸린 시간 {duration(elapsed)}</dd>}
                 </div>
                 <div>
                   <dt className="text-small text-fg-3">전체 버전 합계</dt>
@@ -387,6 +388,7 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
               <dd className="mt-1 text-title font-medium tabular-nums">{u ? compact(u.input + u.output) : mode === 'none' ? '0' : '—'}</dd>
               <dd className="truncate text-micro text-fg-3 tabular-nums">
                 {u ? `입력 ${compact(u.input)} · 출력 ${compact(u.output)}` : ''}</dd>
+              {d.elapsed !== undefined && <dd className="text-micro text-fg-3 tabular-nums">걸린 시간 {duration(d.elapsed)}</dd>}
             </div>
             <div className="min-w-0">
               <dt className="text-small text-fg-3">비용</dt>
@@ -411,7 +413,7 @@ function DevelopTokenCard({ record }: { record?: VersionRecord }) {
                 output: xu?.output ?? 0,
                 calls: xu?.calls ?? 0,
                 current: i === all.length - 1,
-                sub: `${formatDate(x.at)} · ${xmode === 'build' ? '기능 전체 AI' : xmode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'}${xu || xmode === 'none' ? '' : ' · 기록 없음 (예전 개발)'}${runCosts[i] !== undefined ? ` · ${usd(runCosts[i]!)}` : ''}`,
+                sub: `${formatDate(x.at)} · ${xmode === 'build' ? '기능 전체 AI' : xmode === 'logic' ? '빈 로직만 AI' : 'AI 안 씀'}${xu || xmode === 'none' ? '' : ' · 기록 없음 (예전 개발)'}${runCosts[i] !== undefined ? ` · ${usd(runCosts[i]!)}` : ''}${x.elapsed !== undefined ? ` · ${duration(x.elapsed)}` : ''}`,
               }
             })}
           />

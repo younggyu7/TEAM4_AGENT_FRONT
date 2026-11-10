@@ -2,7 +2,7 @@ import { ArrowRight, CheckCircle, CircleNotch, WarningCircle, X } from '@phospho
 import { useEffect, useState } from 'react'
 import type { Job } from '../../api'
 import { clearJob } from '../lib/jobs'
-import { Button, Card, cx, IconButton } from './ui'
+import { Button, Card, cx, duration, IconButton } from './ui'
 
 /** 진행 상황: 문서 업로드(홈), 기능 명세 내보내기·ERD 저장(ERD 화면 위), 확인 질문 답 반영(기능 명세 화면 위),
  * ERD 최종 확정(ERD·최종 산출물 화면 위) 작업이 도는 동안과 끝난 뒤 결과 */
@@ -41,7 +41,7 @@ export function JobPanel({ job, project, onOpen, current }: {
           </h2>
           {running && (
             <p className="mt-1 text-small text-fg-3 tabular-nums">
-              {elapsed}초 경과 · {job.source === 'run'
+              {duration(elapsed)} 경과 · {job.source === 'run'
                 ? 'Agent가 문서 분석 → 요구사항 추출·검토 → 기능 명세 초안까지 만듭니다 (문서 크기에 따라 수 분~수십 분). 확인 질문은 추천안으로 가정하고, 끝나면 화면에서 확인·수정한 뒤 ERD를 만듭니다.'
                 : job.source === 'review'
                 ? '확정한 ERD로 최종본을 만듭니다: 지적 처리 기록 → DDL 검증·추적 검토(코드) → API 설계(바뀐 기능만, 개발 스펙 문서 10개). DDL에 오류가 있으면 최종본을 만들지 않습니다. 끝나면 최종본이 열립니다.'

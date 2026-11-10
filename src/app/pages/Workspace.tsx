@@ -17,7 +17,7 @@ import { readStore } from '../lib/storage'
 import { specOf, stageTargets } from '../lib/versions'
 import { JobPanel } from '../components/JobPanel'
 import { resumeJob, startReviewJob, useJob } from '../lib/jobs'
-import { directiveItems, erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
+import { confirmedTraces, directiveItems, erdReview, newAnswers, specReview, summarize, type ReviewItem } from '../lib/review'
 import { isDocPage, PAGE_LABEL, type Page, type Route } from '../lib/route'
 import { StackNote } from '../components/StackChoice'
 import { DevelopActions } from '../components/DevelopActions'
@@ -151,7 +151,7 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
   const reviewJob = myJob?.source === 'review' ? myJob : undefined
   const startReview = () => {
     draft.finalize('erd')
-    startReviewJob(route.project, targets.erd, draft.state.dispositions ?? {}, shell.onReloadProjects)
+    startReviewJob(route.project, targets.erd, { ...draft.state.dispositions, ...confirmedTraces(design, draft.state) }, shell.onReloadProjects)
       .catch((e) => setSavedNote(`최종 확정을 시작하지 못함: ${(e as Error).message}`))
   }
   // 기능 명세는 내보낸 뒤에도 고쳐서 다시 내보낼 수 있다: 고친 명세를 새 기능 명세 버전(v2)으로 남기고 그 ERD(v2.1)를 만든다

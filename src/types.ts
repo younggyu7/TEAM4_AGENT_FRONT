@@ -168,6 +168,8 @@ export interface VersionRecord {
   summary?: string[]
   db_validation?: string
   db_engine?: string
+  /** 이 버전을 만든 작업이 걸린 시간(초) */
+  elapsed?: number
   /** 최종 산출물 화면에서 고른 기술 스택 (이것이 있어야 '확정'). parts: 화면·백엔드·DB를 나눠 고른 값 */
   tech_stack?: { stack: string; basis: string; parts?: Record<'frontend' | 'backend' | 'database', string> }
   /** 최종 개발하기 기록 (승인한 최종본): 누가·언제·AI 사용 여부·미리보기 빌드 여부 */
@@ -184,6 +186,8 @@ export interface VersionRecord {
     /** 다시 개발해 만든 새 브랜치 */
     branch?: string | null
     usage?: { calls: number; input: number; output: number; model: string; effort: string; mode: 'build' | 'logic' | 'none' }
+    /** 이 개발 작업이 걸린 시간(초) */
+    elapsed?: number
     /** 기능별 구현 방식과 고객 답 대기 규칙 */
     summary?: { functions: number; with_api: number; ai: string[]; failed: string[]; template: string[]; todo_count: number
       /** 빈 로직만 AI: AI가 채운 기능·자리 수 */

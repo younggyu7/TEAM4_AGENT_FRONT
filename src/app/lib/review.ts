@@ -1,4 +1,4 @@
-import type { Directive } from '../../api'
+import type { Directive, Dispositions } from '../../api'
 import type { Design, Entity, FunctionSpec, Issue, Question } from '../../types'
 import type { DraftState } from './draft'
 
@@ -211,6 +211,13 @@ export function erdReview(design: Design, entities: Entity[], draft: DraftState)
     } else if (entity) items.push(issueItem(issue, entity.entity_id, entity.label, draft))
   }
   return items
+}
+
+/** ERD 화면에서 '반영함'으로 확인한 추적 검토 지적(TRACE_*) → 서버로 보낼 처리 (ERD 저장·최종 확정). 다음 추적 검토가 다시 열지 않고 완료 조건에 반영된다 */
+export function confirmedTraces(design: Design, draft: DraftState): Dispositions {
+  return Object.fromEntries(design.issues
+    .filter((i) => i.kind.startsWith('TRACE_') && i.status !== 'RESOLVED' && draft.checked[`i:${i.issue_id}`])
+    .map((i) => [i.issue_id, { choice: 'confirmed' as const, note: '' }]))
 }
 
 /** 의미 검토 지적의 처리: 화면에서 고른 것, 없으면 이전 ERD 버전에서 이어받은 처리('kept') */

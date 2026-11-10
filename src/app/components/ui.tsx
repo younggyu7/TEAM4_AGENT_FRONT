@@ -279,6 +279,14 @@ export function ErrorNote({ message, onRetry, hint }: { message: string; onRetry
 /** 숫자 형식: 1,234 */
 export const fmt = (n: number) => n.toLocaleString('ko-KR')
 
+/** 걸린 시간: 45초, 3분 12초, 1시간 5분 */
+export function duration(sec: number): string {
+  const s = Math.max(Math.round(sec), 0)
+  if (s < 60) return `${s}초`
+  if (s < 3600) return `${Math.floor(s / 60)}분 ${s % 60}초`
+  return `${Math.floor(s / 3600)}시간 ${Math.floor((s % 3600) / 60)}분`
+}
+
 /** 큰 수 줄임: 1.2만, 34.5만 */
 export function compact(n: number): string {
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}억`

@@ -4,7 +4,7 @@ import { getCapabilities } from '../../api'
 import type { Design } from '../../types'
 import type { Draft } from '../lib/draft'
 import { startJob } from '../lib/jobs'
-import { assumptionId, isRequirementQuestion, isStackQuestion, newAnswers, ruleMark } from '../lib/review'
+import { assumptionId, confirmedTraces, isRequirementQuestion, isStackQuestion, newAnswers, ruleMark } from '../lib/review'
 import { functionsMd, specChanges, specChangeText } from '../lib/specMd'
 import { Button, IconButton, Label, TextArea, TextInput } from './ui'
 
@@ -56,7 +56,7 @@ export function SaveVersionDialog({ mode, aiAnswers, redo, open, onClose, draft,
     && draft.state.checked[`i:${i.issue_id}`]).map((i) => i.issue_id) : []
   // 기능 명세 새 버전: 'AI로 답 반영'(새 답이 있을 때) 또는 확정한 기능 명세의 '다시 만들기'
   const answering = (Boolean(aiAnswers) && freshIds.length > 0) || Boolean(redo)
-  const dispositions = mode === 'erd' ? draft.state.dispositions ?? {} : {}
+  const dispositions = mode === 'erd' ? { ...draft.state.dispositions, ...confirmedTraces(design, draft.state) } : {}
   const disposed = Object.keys(dispositions).length
   // 추천과 다른 답 중 기능 규칙을 바꾸는 것 (기술 스택은 개발 스펙에만 쓰여 규칙을 바꾸지 않는다)
   const freshDiffer = design.questions.filter((q) => fresh[q.question_id] && !isStackQuestion(q) && fresh[q.question_id] !== (q.recommended ?? '').trim()).length
