@@ -155,7 +155,9 @@ export function VersionGraph({ project, version, navigate, onReloadProjects }: {
                       <span className="flex min-w-0 overflow-hidden">
                         {v.approval?.decision === 'approve' ? <Badge tone="ok">승인</Badge>
                           : v.approval?.decision === 'changes' ? <Badge tone="warn">수정 지시</Badge>
-                          : v.db_validation && <Badge tone={v.db_validation === 'PASSED' ? 'ok' : 'danger'}>DB {v.db_validation === 'PASSED' ? '통과' : '실패'}</Badge>}
+                          : v.db_validation === 'PASSED' ? <Badge tone="ok">DB 통과</Badge>
+                          // DDL 검증 실패는 버전(ERD)은 만들어진 것이라 확인할 것으로 보인다 (최종 확정 전에 ERD를 고치거나 다시 확정)
+                          : v.db_validation && <span title={`DDL 검증을 통과하지 못했습니다. 최종 확정 전에 확인하세요.${v.db_errors?.length ? `\n${v.db_errors.slice(0, 3).join('\n')}` : ''}`}><Badge tone="info">DB 확인 필요</Badge></span>}
                       </span>
                     </span>
                     <span className="block truncate text-micro text-fg-3">

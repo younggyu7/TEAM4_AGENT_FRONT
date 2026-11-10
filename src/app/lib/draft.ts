@@ -276,6 +276,8 @@ export function useDraft(design: Design, project: string, version: string, canSa
 
 
   return {
+    project,
+    version,
     state,
     save,
     savedAt,

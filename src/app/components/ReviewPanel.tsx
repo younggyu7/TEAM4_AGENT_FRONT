@@ -179,7 +179,7 @@ export function ReviewRow({ item, draft, onJump, compact, by }: { item: ReviewIt
           <Checkbox
             checked={item.resolved}
             onChange={(v) => draft.setChecked(item.id, v)}
-            label={item.kind === 'assumption' ? '가정 맞음' : item.kind === 'unconfirmed' ? '추천안 맞음' : '반영함'}
+            label={item.kind === 'assumption' ? '가정 맞음' : item.kind === 'unconfirmed' ? '추천안 맞음' : item.issue?.kind === 'EVIDENCE_NOT_FOUND' ? '원문 확인함' : '반영함'}
             describedBy={item.detail ? detailId : undefined}
           />
         )}
@@ -296,7 +296,7 @@ function QuestionAnswer({ item, draft }: { item: ReviewItem; draft: Draft }) {
   const isOption = q.options.includes(answer)
   const inputId = useId()
   // 기술 스택(TQ-001)은 화면·서버·DB를 하나씩 고른다
-  if (isStackQuestion(q)) return <StackAnswer value={answer} onChange={(stack) => draft.setAnswer(q.question_id, stack)} />
+  if (isStackQuestion(q)) return <StackAnswer project={draft.project} version={draft.version} value={answer} onChange={(stack) => draft.setAnswer(q.question_id, stack)} />
   return (
     <fieldset className="mt-3">
       <legend className="sr-only">답 고르기</legend>

@@ -92,7 +92,8 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         <FileList project={project} version={version} files={ARTIFACT_FILES} />
       </Card>
 
-      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canFill={canFill} />
+      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canFill={canFill}
+        canChangeStack={isFinal && canDecide && record?.approval?.decision !== 'approve'} />
     </div>
   )
 }
@@ -384,7 +385,7 @@ const RESOLUTION_TONE = (i: Issue) => (!i.resolution ? 'warn' : i.status === 'UN
 
 /**
  * 의미 검토 지적과 처리: ERD를 만들 때 의미 검토 Agent가 낸 지적(데이터 모델 Agent가 한 번 고친 뒤 남은 것)과
- * 사람이 ERD 화면에서 정한 처리(반영함·문제 아님·미해결로 둠). 보기만 한다.
+ * 사람이 ERD 화면에서 정한 처리(반영함·문제 아님·미해결로 둠), 최종 확정 때 사람이 고친 테이블만 다시 검토해 나온 지적(처리 전). 보기만 한다.
  */
 function RemarksCard({ remarks, isFinal, onOpen, entities }: { remarks: Issue[]; isFinal: boolean; onOpen: (id: string) => void; entities: Set<string> }) {
   return (
@@ -393,6 +394,7 @@ function RemarksCard({ remarks, isFinal, onOpen, entities }: { remarks: Issue[];
         <p className="mt-1 text-small text-fg-3">
           ERD를 만들 때 의미 검토 Agent가 ERD를 기능 명세와 대조해 낸 지적입니다. 데이터 지적은 데이터 모델 Agent가 한 번 고쳤고,
           남은 지적은 ERD 화면에서 사람이 처리를 정했습니다{isFinal ? '' : ' (최종 확정 전이라 처리가 아직 남지 않았습니다)'}.
+          {isFinal && ' 그 뒤 사람이 고친 테이블은 최종 확정 때 한 번 더 검토해, 남은 문제는 처리 전으로 보입니다.'}
         </p>
       </CardHeader>
       <div className="px-5 pb-5">
@@ -482,12 +484,13 @@ function DdlCard({ project, version }: { project: string; version: string }) {
 }
 
 /** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 10개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
-function DevSpecFilesCard({ design, project, version, onOpen, canFill }: {
+function DevSpecFilesCard({ design, project, version, onOpen, canFill, canChangeStack }: {
   design: Design
   project: string
   version: string
   onOpen: (name: string) => void
   canFill: boolean
+  canChangeStack?: boolean
 }) {
   const meta = design.meta.dev_spec
   // 만든 뒤에 추가된 개발 스펙 문서(예: 업무 동작 분석 전 최종본의 BEHAVIOR.md). data_model.json은 설계 산출물이라 늘 있다
@@ -501,8 +504,8 @@ function DevSpecFilesCard({ design, project, version, onOpen, canFill }: {
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
-      {/* 기술 스택은 기능 명세에서 확정한다 (원문이 정했으면 원문). 여기서는 보기만 */}
-      {meta && <StackNote project={project} version={version} className="mx-5 mb-3" />}
+      {/* 기술 스택: 기능 명세에서 확정(원문이 정했으면 원문). 최종 승인 전에는 PM·개발자가 여기서 바꿀 수 있다 (업로드 문서와 다르면 경고) */}
+      {meta && <StackNote project={project} version={version} canChange={canChangeStack} className="mx-5 mb-3" />}
       {missing.length > 0 && <FillDevSpec project={project} version={version} missing={missing.map((f) => f.name)} canFill={canFill} />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">
