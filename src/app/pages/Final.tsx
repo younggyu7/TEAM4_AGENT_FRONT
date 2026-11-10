@@ -385,7 +385,7 @@ const RESOLUTION_TONE = (i: Issue) => (!i.resolution ? 'warn' : i.status === 'UN
 
 /**
  * 의미 검토 지적과 처리: ERD를 만들 때 의미 검토 Agent가 낸 지적(데이터 모델 Agent가 한 번 고친 뒤 남은 것)과
- * 사람이 ERD 화면에서 정한 처리(반영함·문제 아님·미해결로 둠). 보기만 한다.
+ * 사람이 ERD 화면에서 정한 처리(반영함·문제 아님·미해결로 둠), 최종 확정 때 사람이 고친 테이블만 다시 검토해 나온 지적(처리 전). 보기만 한다.
  */
 function RemarksCard({ remarks, isFinal, onOpen, entities }: { remarks: Issue[]; isFinal: boolean; onOpen: (id: string) => void; entities: Set<string> }) {
   return (
@@ -394,6 +394,7 @@ function RemarksCard({ remarks, isFinal, onOpen, entities }: { remarks: Issue[];
         <p className="mt-1 text-small text-fg-3">
           ERD를 만들 때 의미 검토 Agent가 ERD를 기능 명세와 대조해 낸 지적입니다. 데이터 지적은 데이터 모델 Agent가 한 번 고쳤고,
           남은 지적은 ERD 화면에서 사람이 처리를 정했습니다{isFinal ? '' : ' (최종 확정 전이라 처리가 아직 남지 않았습니다)'}.
+          {isFinal && ' 그 뒤 사람이 고친 테이블은 최종 확정 때 한 번 더 검토해, 남은 문제는 처리 전으로 보입니다.'}
         </p>
       </CardHeader>
       <div className="px-5 pb-5">
