@@ -348,6 +348,12 @@ export interface StackStatus {
   parts: Partial<Record<StackLayer, string>>
   untemplated: { layer: StackLayer; name: string; label: string }[]
   warning: string
+  /** 업로드 문서에 적힌 스택 (parts: 찾은 층만, evidence: 근거 요구사항과 원문 일부). 화면·DB만 적혀 있어도 온다 */
+  source?: { stack: string; parts: Partial<Record<StackLayer, string>>; evidence: { id: string; title: string; text: string }[] } | null
+  /** 고른 값이 업로드 문서와 다를 때 안내 */
+  conflict?: string
+  /** 개발 범위 확정에서 사람이 바꾼 값 (원문보다 우선) */
+  changed?: boolean
 }
 
 export async function getStackStatus(project: string, version: string): Promise<StackStatus> {

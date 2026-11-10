@@ -92,7 +92,8 @@ export function FinalView({ design, project, version, record, finalized, onOpenE
         <FileList project={project} version={version} files={ARTIFACT_FILES} />
       </Card>
 
-      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canFill={canFill} />
+      <DevSpecFilesCard design={design} project={project} version={version} onOpen={onOpenDevSpec} canFill={canFill}
+        canChangeStack={isFinal && canDecide && record?.approval?.decision !== 'approve'} />
     </div>
   )
 }
@@ -482,12 +483,13 @@ function DdlCard({ project, version }: { project: string; version: string }) {
 }
 
 /** 개발 스펙 파일: 최종본('ERD 최종 확정')에 생기는 개발 AI용 문서 10개를 읽는 순서대로. 문서마다 보기(개발 스펙 탭)·받기 */
-function DevSpecFilesCard({ design, project, version, onOpen, canFill }: {
+function DevSpecFilesCard({ design, project, version, onOpen, canFill, canChangeStack }: {
   design: Design
   project: string
   version: string
   onOpen: (name: string) => void
   canFill: boolean
+  canChangeStack?: boolean
 }) {
   const meta = design.meta.dev_spec
   // 만든 뒤에 추가된 개발 스펙 문서(예: 업무 동작 분석 전 최종본의 BEHAVIOR.md). data_model.json은 설계 산출물이라 늘 있다
@@ -501,8 +503,8 @@ function DevSpecFilesCard({ design, project, version, onOpen, canFill }: {
             : "이 버전에는 개발 스펙이 없습니다. ERD 화면에서 'ERD 최종 확정'으로 만든 최종본에 생깁니다 (예전에 만든 최종본은 다시 최종 확정하면 새 최종본에 생깁니다)."}
         </p>
       </CardHeader>
-      {/* 기술 스택은 기능 명세에서 확정한다 (원문이 정했으면 원문). 여기서는 보기만 */}
-      {meta && <StackNote project={project} version={version} className="mx-5 mb-3" />}
+      {/* 기술 스택: 기능 명세에서 확정(원문이 정했으면 원문). 최종 승인 전에는 PM·개발자가 여기서 바꿀 수 있다 (업로드 문서와 다르면 경고) */}
+      {meta && <StackNote project={project} version={version} canChange={canChangeStack} className="mx-5 mb-3" />}
       {missing.length > 0 && <FillDevSpec project={project} version={version} missing={missing.map((f) => f.name)} canFill={canFill} />}
       {meta && (
         <ol className="grid gap-2 px-5 pb-5 sm:grid-cols-2">

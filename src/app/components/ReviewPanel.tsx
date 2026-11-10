@@ -296,7 +296,7 @@ function QuestionAnswer({ item, draft }: { item: ReviewItem; draft: Draft }) {
   const isOption = q.options.includes(answer)
   const inputId = useId()
   // 기술 스택(TQ-001)은 화면·서버·DB를 하나씩 고른다
-  if (isStackQuestion(q)) return <StackAnswer value={answer} onChange={(stack) => draft.setAnswer(q.question_id, stack)} />
+  if (isStackQuestion(q)) return <StackAnswer project={draft.project} version={draft.version} value={answer} onChange={(stack) => draft.setAnswer(q.question_id, stack)} />
   return (
     <fieldset className="mt-3">
       <legend className="sr-only">답 고르기</legend>
