@@ -19,10 +19,14 @@ const PRICES: Record<string, { input: number; output: number; cacheRead?: number
   'claude-fable-5': { input: 10, output: 50 },
 }
 
-/** 날짜가 붙은 ID(claude-haiku-4-5-20251001)도 같은 모델로 본다 */
+/** 모델 ID만: 검토 보고서의 '- 모델:' 줄은 'claude-haiku-5-5 (생각 수준 medium)'처럼 생각 수준이 붙는다 */
+export const modelId = (model: string) => model.replace(/\s*\(.*$/, '').trim()
+
+/** 날짜가 붙은 ID(claude-haiku-4-5-20251001)·생각 수준이 붙은 기록도 같은 모델로 본다 */
 function priceOf(model?: string) {
   if (!model) return undefined
-  const key = Object.keys(PRICES).sort((a, b) => b.length - a.length).find((k) => model === k || model.startsWith(`${k}-`))
+  const id = modelId(model)
+  const key = Object.keys(PRICES).sort((a, b) => b.length - a.length).find((k) => id === k || id.startsWith(`${k}-`))
   return key ? PRICES[key] : undefined
 }
 
@@ -37,8 +41,8 @@ export function costOf(usage: Usage): number | undefined {
 
 /** 화면용 짧은 모델 이름: claude-haiku-5-5 → Haiku 5.5 (모르는 형식은 그대로) */
 export function shortModel(model: string): string {
-  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(model)
-  if (!m) return model
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d+))?(?:-\d{8})?$/.exec(modelId(model))
+  if (!m) return modelId(model)
   return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[3] ? `${m[2]}.${m[3]}` : m[2]}`
 }
 

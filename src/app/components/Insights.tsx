@@ -220,7 +220,12 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
                 <div>
                   <dt className="text-small text-fg-3">이 버전 (v{version})</dt>
                   <dd className="mt-1 text-title font-medium tabular-nums">{cur ? compact(cur.input + cur.output) : '—'}</dd>
-                  <dd className="text-micro text-fg-3 tabular-nums">{cur ? `호출 ${fmt(cur.calls)}회${curCost !== undefined ? ` · ${usd(curCost)}` : ''}` : '기록 없음'}</dd>
+                  <dd className="text-micro text-fg-3 tabular-nums">{cur ? `호출 ${fmt(cur.calls)}회` : '기록 없음'}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="text-small text-fg-3">비용 (이 버전)</dt>
+                  <dd className="mt-1 text-title font-medium tabular-nums">{curCost !== undefined ? usd(curCost) : '—'}</dd>
+                  <dd className="truncate text-micro text-fg-3" title={cur?.model}>{curCost !== undefined ? 'USD 정가' : !cur ? '기록 없음' : cur.model ? `단가 미등록 (${shortModel(cur.model)})` : '모델 기록 없음'}</dd>
                 </div>
                 <div>
                   <dt className="text-small text-fg-3">전체 버전 합계</dt>
@@ -240,7 +245,7 @@ function TokenCard({ usages, version }: { usages: Load<VersionUsage[]>; version:
                   output: u.usage?.output ?? 0,
                   calls: u.usage?.calls ?? 0,
                   current: u.version === version,
-                  sub: u.usage?.calls === 0 ? '이어서 실행 (새 호출 없음)' : undefined,
+                  sub: u.usage?.calls === 0 ? '이어서 실행 (새 호출 없음)' : u.usage && costOf(u.usage) !== undefined ? usd(costOf(u.usage)!) : undefined,
                 }))}
               />
             </>
