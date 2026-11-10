@@ -84,8 +84,12 @@ export interface Entity {
   attributes: Attribute[]
   function_ids: string[]
   requirement_ids: string[]
+  /** 값 조건 (DDL CHECK): column op value, value는 같은 테이블의 다른 컬럼 이름이나 숫자 */
+  checks?: CheckRule[]
   user_edited?: boolean   // 사용자가 고친 엔티티 (rerun에서 고정됨)
 }
+
+export interface CheckRule { column: string; op: '>' | '>=' | '<' | '<=' | '<>'; value: string }
 
 export interface Relation {
   relation_id: string

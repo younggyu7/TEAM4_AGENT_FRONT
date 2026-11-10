@@ -1,7 +1,7 @@
 import { ArrowCounterClockwise, MagnifyingGlass, Plus, Trash } from '@phosphor-icons/react'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { ENTITY_KIND, label as labelOf } from '../../labels'
-import type { Attribute, Entity, FunctionSpec } from '../../types'
+import type { Attribute, CheckRule, Entity, FunctionSpec } from '../../types'
 import { ErdDiagram } from '../components/ErdDiagram'
 import { useDraftSave } from '../components/DraftSave'
 import { ReviewPanel } from '../components/ReviewPanel'
@@ -281,6 +281,8 @@ function EntityForm({ entity, entities, draft, edited, onOpenEntity, onOpenFunct
         </div>
       </section>
 
+      <ChecksEditor id={id} entity={entity} draft={draft} />
+
       {entity.function_ids.length > 0 && (
         <section aria-labelledby={`${id}-fns`}>
           <h3 id={`${id}-fns`} className="eyebrow mb-2">Used by · 이 테이블을 쓰는 기능</h3>
@@ -296,6 +298,62 @@ function EntityForm({ entity, entities, draft, edited, onOpenEntity, onOpenFunct
         </section>
       )}
     </article>
+  )
+}
+
+const OPS: CheckRule['op'][] = ['>', '>=', '<', '<=', '<>']
+// 시간 순서 검사 (서버 model_validator와 같은 낱말): 나중 일이 먼저 일어나야 한다는 조건이면 거꾸로일 수 있다
+const EARLY = new Set(['created', 'requested', 'submitted', 'applied', 'registered', 'start', 'started', 'begin'])
+const LATE = new Set(['approved', 'rejected', 'completed', 'finished', 'closed', 'end', 'ended', 'expired', 'expires', 'until', 'confirmed', 'cancelled', 'canceled'])
+const stageOf = (name: string) => { const t = name.split('_'); return t.some((x) => LATE.has(x)) ? 'late' : t.some((x) => EARLY.has(x)) ? 'early' : '' }
+function reversedTime(rule: CheckRule, attrs: Attribute[]): boolean {
+  const type = (n: string) => attrs.find((a) => a.name === n)?.data_type ?? ''
+  if (!['date', 'timestamp'].includes(type(rule.column)) || !['date', 'timestamp'].includes(type(rule.value))) return false
+  const [a, b] = [stageOf(rule.column), stageOf(rule.value)]
+  return (a === 'late' && b === 'early' && (rule.op === '<' || rule.op === '<=')) || (a === 'early' && b === 'late' && (rule.op === '>' || rule.op === '>='))
+}
+
+/** 값 조건 (DDL CHECK): 고치면 ERD 최종 확정 때 schema.sql·예시 데이터가 이 조건으로 다시 만들어진다 */
+function ChecksEditor({ id, entity, draft }: { id: string; entity: Entity; draft: Draft }) {
+  const checks = entity.checks ?? []
+  const names = entity.attributes.map((a) => a.name).filter(Boolean)
+  const set = (next: CheckRule[]) => draft.updateEntity(id, { checks: next })
+  const change = (i: number, patch: Partial<CheckRule>) => set(checks.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+  return (
+    <section aria-labelledby={`${id}-checks`}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 id={`${id}-checks`} className="eyebrow">Checks · 값 조건 {checks.length}개</h3>
+        <Button size="sm" icon={<Plus />} disabled={!names.length} onClick={() => set([...checks, { column: names[0], op: '>', value: '0' }])}>조건 추가</Button>
+      </div>
+      {checks.length === 0 ? <p className="text-small text-fg-3">값 조건이 없습니다 (예: 금액 &gt; 0, 종료일 &gt;= 시작일).</p> : (
+        <ul className="space-y-1.5">
+          {checks.map((c, i) => {
+            const bad = reversedTime(c, entity.attributes)
+            const label = `${i + 1}번째 값 조건`
+            return (
+              <li key={i} className="flex flex-wrap items-center gap-1.5">
+                <select aria-label={`${label} 컬럼`} value={c.column} onChange={(e) => change(i, { column: e.target.value })}
+                  className="min-h-8 rounded-md border border-control bg-card px-2 font-mono text-small">
+                  {!names.includes(c.column) && <option value={c.column}>{c.column} (없는 컬럼)</option>}
+                  {names.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <select aria-label={`${label} 비교`} value={c.op} onChange={(e) => change(i, { op: e.target.value as CheckRule['op'] })}
+                  className="min-h-8 rounded-md border border-control bg-card px-2 font-mono text-small">
+                  {OPS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+                <TextInput dense aria-label={`${label} 값 (다른 컬럼 이름 또는 숫자)`} list={`${id}-check-cols`} value={c.value}
+                  onChange={(e) => change(i, { value: e.target.value.trim() })} className="w-48 font-mono"
+                  aria-invalid={!names.includes(c.value) && Number.isNaN(Number(c.value))} />
+                <IconButton label={`${label} 삭제`} icon={<Trash />} className="size-8" onClick={() => set(checks.filter((_, j) => j !== i))} />
+                {bad && <Badge tone="warn">시간 순서가 거꾸로일 수 있음 — 원문 근거를 확인하세요</Badge>}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      <datalist id={`${id}-check-cols`}>{names.map((n) => <option key={n} value={n} />)}</datalist>
+      <p className="mt-1 text-micro text-fg-3">값은 같은 테이블의 다른 컬럼 이름이나 숫자입니다. 고친 조건은 ERD 최종 확정 때 schema.sql과 예시 데이터에 반영됩니다.</p>
+    </section>
   )
 }
 

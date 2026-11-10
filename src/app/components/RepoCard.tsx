@@ -1,7 +1,7 @@
 import { ArrowDown, CloudArrowUp, GitBranch, GitMerge, GitPullRequest, Plus, Trash } from '@phosphor-icons/react'
 import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import {
-  releaseRepo,
+  adoptBranch, getAdoptPlan, releaseRepo, type AdoptPlan,
   checkRemote, createBranch, deleteBranch, getBranchDiff, getGitSettings, getRepo, getRepoCommit, getRepoLog, mergeRequest, rejectRequest,
   requestMerge, updateBranch, ApiError, type CommitDetail, type DiffFile, type GitSettings, type MergeRequest, type RepoCommit, type RepoOverview,
 } from '../../api'
@@ -82,7 +82,7 @@ export function RepoCard({ project, version, user }: { project: string; version:
   const [busy, setBusy] = useState(false)
   const [branch, setBranch] = useRepoBranch(project)
   const changed = useRepoVersion()
-  const [dialog, setDialog] = useState<null | 'branch' | 'request' | { commit: string } | { diff: MergeRequest } | { reject: MergeRequest }>(null)
+  const [dialog, setDialog] = useState<null | 'branch' | 'request' | 'adopt' | { commit: string } | { diff: MergeRequest } | { reject: MergeRequest }>(null)
   const write = can(user, 'repo_write')
   const head = can(user, 'develop')
 
@@ -150,6 +150,11 @@ export function RepoCard({ project, version, user }: { project: string; version:
               title={!write ? NEEDS.repo_write : current.request ? '이미 합치기 요청 중입니다' : current.changes > 0 ? '먼저 코드 보기에서 저장하기를 하세요'
                 : !current.ahead ? 'dev에 없는 커밋이 없습니다' : '다른 개발자에게 dev에 합쳐 달라고 요청합니다'}
               onClick={() => setDialog('request')}>합치기 요청</Button>
+            {/^candidate-v\d+$/.test(current.name) && (
+              <Button size="sm" variant="ok" icon={<GitMerge />} disabled={!head || busy}
+                title={head ? '이 후보 내용으로 dev를 바꿉니다 (사람이 고친 파일은 골라서 살림, 충돌로 멈추지 않음)' : NEEDS.develop}
+                onClick={() => setDialog('adopt')}>dev로 채택</Button>
+            )}
             <Button size="sm" variant="ghost" icon={<ArrowDown />} disabled={!write || busy || !current.behind || current.changes > 0}
               title={!write ? NEEDS.repo_write : current.changes > 0 ? '먼저 저장하기를 하세요' : current.behind ? 'dev의 새 커밋을 이 브랜치에 합칩니다' : 'dev의 최신 내용이 이미 있습니다'}
               onClick={() => void act(async () => (await updateBranch(project, current.name)).message)}>기준 브랜치 가져오기</Button>
@@ -244,6 +249,8 @@ export function RepoCard({ project, version, user }: { project: string; version:
       </div>
 
       {dialog === 'branch' && <NewBranchDialog project={project} user={user} onClose={() => setDialog(null)} onMade={(b) => { setBranch(b); repoChanged(); load() }} />}
+      {dialog === 'adopt' && current && <AdoptDialog project={project} branch={current.name} onClose={() => setDialog(null)}
+        onDone={(msg) => { setNote(msg); setBranch('dev'); repoChanged(); load() }} />}
       {dialog === 'request' && current && <RequestDialog project={project} branch={current.name} ahead={current.ahead} onClose={() => setDialog(null)} onDone={() => { repoChanged(); load() }} />}
       {dialog && typeof dialog === 'object' && 'commit' in dialog && <CommitDialog project={project} sha={dialog.commit} onClose={() => setDialog(null)} />}
       {dialog && typeof dialog === 'object' && 'diff' in dialog && <BranchDiffDialog project={project} request={dialog.diff} onClose={() => setDialog(null)} />}
@@ -295,6 +302,67 @@ function RequestDialog({ project, branch, ahead, onClose, onDone }: { project: s
         <Button variant="ghost" onClick={onClose}>취소</Button>
         <Button variant="primary" icon={<GitPullRequest />} disabled={busy} onClick={() => void send()}>요청</Button>
       </div>
+    </Modal>
+  )
+}
+
+/** 후보 채택: 달라지는 파일을 보여 주고, 사람이 dev에서 고친 파일은 살릴지(dev 것) 바꿀지(후보 것) 고른다. 기본은 모두 후보 것 */
+function AdoptDialog({ project, branch, onClose, onDone }: { project: string; branch: string; onClose: () => void; onDone: (message: string) => void }) {
+  const [plan, setPlan] = useState<AdoptPlan | null>(null)
+  const [keep, setKeep] = useState<Set<string>>(new Set())
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { getAdoptPlan(project, branch).then(setPlan).catch((e) => setError((e as Error).message)) }, [project, branch])
+  const human = plan?.files.filter((f) => f.human) ?? []
+  const others = plan ? plan.files.length - human.length : 0
+  const toggle = (path: string) => setKeep((k) => { const n = new Set(k); if (n.has(path)) n.delete(path); else n.add(path); return n })
+  const run = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      const r = await adoptBranch(project, branch, [...keep])
+      onDone(`${branch}을(를) dev로 채택했습니다${r.kept.length ? ` (dev 파일 ${r.kept.length}개 살림)` : ''}.${r.seed_dropped.length ? ` 예시 데이터 ${r.seed_dropped.length}행이 DB 규칙에 걸려 뺐습니다: ${r.seed_dropped[0]}` : ''} 2단계에서 '새 자료로 처음부터 다시 시작'으로 확인하세요.`)
+      onClose()
+    } catch (e) {
+      setError(errorText(e))
+      setBusy(false)
+    }
+  }
+  const label = { A: '새 파일', M: '바뀜', D: '지움' } as const
+  return (
+    <Modal wide title={`dev로 채택 · ${branch}`} onClose={onClose}>
+      {error && <p role="alert" className="text-danger">{error}</p>}
+      {!plan && !error && <Loading label="달라지는 파일을 읽는 중" lines={4} />}
+      {plan && <>
+        <p className="text-small text-fg-2">dev를 <code>{branch}</code> 내용으로 바꿉니다. 이력은 이어지고 예전 dev는 이력에 남습니다. 달라지는 파일 {plan.files.length}개.</p>
+        {plan.active_work.length > 0 && (
+          <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-small text-warn">dev에서 파생된 진행 중 작업 {plan.active_work.length}개({plan.active_work.slice(0, 3).join(', ')}{plan.active_work.length > 3 ? ' …' : ''})는 예전 dev 기준입니다. 받을 때 새 dev가 합쳐지며 충돌할 수 있습니다.</p>
+        )}
+        <section aria-label="사람이 고친 파일">
+          <h3 className="mb-1 text-small font-medium">사람이 dev에서 고친 파일 {human.length}개 <span className="font-normal text-fg-3">— 체크하면 dev 것을 살립니다 (체크 안 하면 후보 것으로)</span></h3>
+          {human.length === 0 ? <p className="text-small text-fg-3">없습니다. 후보 내용으로 그대로 바뀝니다.</p> : (
+            <ul className="max-h-64 space-y-0.5 overflow-auto rounded-md border border-line p-1.5">
+              {human.map((f) => (
+                <li key={f.path}><label className="flex items-center gap-2 rounded-sm px-1.5 py-1 text-small hover:bg-sunken">
+                  <input type="checkbox" checked={keep.has(f.path)} onChange={() => toggle(f.path)} />
+                  <code className="min-w-0 flex-1 truncate text-micro" title={f.path}>{f.path}</code>
+                  <Badge tone={keep.has(f.path) ? 'ok' : 'neutral'}>{keep.has(f.path) ? 'dev 것 살림' : `후보 것 (${label[f.status]})`}</Badge>
+                </label></li>
+              ))}
+            </ul>
+          )}
+          {human.length > 1 && <div className="mt-1 flex gap-1.5">
+            <Button size="sm" variant="ghost" onClick={() => setKeep(new Set(human.map((f) => f.path)))}>모두 살리기</Button>
+            <Button size="sm" variant="ghost" onClick={() => setKeep(new Set())}>모두 후보 것으로</Button>
+          </div>}
+        </section>
+        {others > 0 && <p className="text-small text-fg-3">그 밖에 AI가 만든 파일 {others}개는 후보 것으로 바뀝니다.</p>}
+        <p className="text-micro text-fg-3">채택한 뒤 dev의 schema.sql로 예시 데이터를 확인해, DB 규칙에 걸리는 행은 빼고 알려 줍니다.</p>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>취소</Button>
+          <Button variant="ok" icon={<GitMerge />} disabled={busy} onClick={() => void run()}>dev로 채택</Button>
+        </div>
+      </>}
     </Modal>
   )
 }

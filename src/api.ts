@@ -247,6 +247,19 @@ export async function getRepoCommit(project: string, sha: string): Promise<Commi
   return (await (await request(`/develop/repo/commit?${query({ project, sha })}`)).json()) as CommitDetail
 }
 
+export interface AdoptPlan { branch: string; target: string; human: number; active_work: string[]
+  /** dev와 달라지는 파일. status A(후보에 새로)·M·D(후보에서 지움), human: 후보가 갈라진 뒤 dev에서 사람이 고친 파일 */
+  files: { path: string; status: 'A' | 'M' | 'D'; human: boolean }[] }
+
+export async function getAdoptPlan(project: string, branch: string): Promise<AdoptPlan> {
+  return (await (await request(`/develop/repo/adopt?${query({ project, branch })}`)).json()) as AdoptPlan
+}
+
+/** 후보 브랜치로 dev를 바꾼다. keep: dev 것을 살릴 파일 */
+export async function adoptBranch(project: string, branch: string, keep: string[]): Promise<{ commit: string; kept: string[]; seed_dropped: string[] }> {
+  return (await (await post('/develop/repo/adopt', { project, branch, keep })).json()) as { commit: string; kept: string[]; seed_dropped: string[] }
+}
+
 export async function getBranchDiff(project: string, branch: string): Promise<{ branch: string; ahead: number; behind: number; files: DiffFile[] }> {
   return (await (await request(`/develop/repo/diff?${query({ project, branch })}`)).json()) as { branch: string; ahead: number; behind: number; files: DiffFile[] }
 }
