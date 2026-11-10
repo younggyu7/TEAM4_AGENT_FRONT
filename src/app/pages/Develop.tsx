@@ -1,4 +1,4 @@
-import { ArrowRight, Check, CircleNotch, Copy, GitBranch, Play, Stop } from '@phosphor-icons/react'
+import { ArrowRight, Check, CircleNotch, Copy, GitBranch, Play, Power } from '@phosphor-icons/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { apiUrl, appUrl, deleteGitSettings, getGitSettings, getPreviewAccounts, getPreviewStatus, getRepo, previewUrl, stopPreview, type GitSettings, type Job, type PreviewAccount, type PreviewStatus, type RepoBranch } from '../../api'
 import { formatDate } from '../../labels'
@@ -84,6 +84,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
   const canStop = can(user, 'preview_stop')
   const developing = job?.source === 'develop' && job.status === 'running'
   const stop = () => stopPreview(project).then(setRun).catch((e) => setError((e as Error).message))
+  const live = run?.status === 'running'   // 켜는 중(빌드·시작)에 끄면 켜던 작업이 끝나며 다시 켜질 수 있어 실행 중일 때만
   const state = run ? RUN[run.status] : undefined
   const mockUrl = apiUrl(`/preview/${encodeURIComponent(project)}/mock/`)
   const openUrl = step === '1' ? (developed?.mock ? mockUrl : undefined) : developed ? previewUrl(project) : undefined
@@ -229,7 +230,7 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                       ? `쓰는 동안은 켜 두고 ${Math.round(run.idle_limit / 60)}분 동안 요청이 없으면 끕니다${run.idle_seconds !== null ? ` (마지막 사용 ${Math.floor(run.idle_seconds / 60)}분 전)` : ''}. 동시에 3개까지.`
                       : run.message || (run.backend ? "위의 '결과물 미리보기'를 누르면 켭니다 (처음엔 빌드로 몇 분)." : '')}</span>
                     {run.status === 'running' && (
-                      <Button size="sm" variant="ghost" icon={<Stop />} disabled={!canStop} title={canStop ? undefined : NEEDS.preview_stop} onClick={() => void stop()}>끄기</Button>
+                      <Button size="sm" variant="secondary" icon={<Power />} disabled={!canStop} title={canStop ? '실행 중인 앱을 끕니다 (데이터는 남음)' : NEEDS.preview_stop} onClick={() => void stop()}>실행 끄기</Button>
                     )}
                   </span>
                   {!run.backend && <p className="mt-1 text-small text-warn">서버 코드가 없어(서버 틀이 없는 기술 스택) 실행하지 않고 예시 데이터 화면을 엽니다.</p>}
@@ -262,6 +263,12 @@ export function DevelopView({ project, record, user, step: given, job, onStep, o
                 {allowed && developed.backend && (
                   <Button size="sm" disabled={job?.status === 'running'} title="지금 dev 코드를 Docker로 켜고 admin 로그인·조회 API를 검사합니다. 2단계에서 실행 중이면 다시 켭니다 (AI 사용 없음)"
                     onClick={() => { setCheckError(''); startCheckJob(project, record.design_version, onFinished).catch((e) => setCheckError((e as Error).message)) }}>다시 확인</Button>
+                )}
+                {developed.backend && (
+                  <Button size="sm" variant="secondary" icon={<Power />}
+                    disabled={!canStop || !live || job?.status === 'running'}
+                    title={!canStop ? NEEDS.preview_stop : job?.status === 'running' ? '작업이 끝난 뒤 끕니다' : !live ? '켜져 있는 앱이 없습니다' : '실행 중인 앱을 끕니다 (데이터는 남음)'}
+                    onClick={() => void stop()}>실행 끄기</Button>
                 )}
               </span>
               {checkError && <span className="mt-1 block text-small text-danger">{checkError}</span>}
