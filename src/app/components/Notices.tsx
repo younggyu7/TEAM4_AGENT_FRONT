@@ -1,4 +1,4 @@
-import { BellSimple, Check } from '@phosphor-icons/react'
+import { BellSimple, Check, Checks } from '@phosphor-icons/react'
 import { useCallback, useEffect, useState } from 'react'
 import { dismissNotice, getNotices, type Notice } from '../../api'
 import { formatDate } from '../../labels'
@@ -18,7 +18,7 @@ export const NOTICE_KIND: Record<Notice['kind'], { tone: Tone; label: string }> 
   develop_failed: { tone: 'danger', label: '개발 실패' },
 }
 
-/** 나에게 온 알림: 화면을 열 때, 30초마다, 알림이 바뀌었을 때 다시 읽는다. dismiss는 확인(나에게서만 지움) */
+/** 나에게 온 알림: 화면을 열 때, 30초마다, 알림이 바뀌었을 때 다시 읽는다. dismiss는 읽음(나에게서만 지움), dismissAll은 여러 개를 한 번에 */
 export function useNotices(reloadKey?: unknown) {
   const [list, setList] = useState<Notice[] | null>(null)
   const load = useCallback(() => { getNotices().then(setList).catch(() => setList((l) => l ?? [])) }, [])
@@ -28,14 +28,17 @@ export function useNotices(reloadKey?: unknown) {
     window.addEventListener(NOTICES_CHANGED, load)
     return () => { window.clearInterval(timer); window.removeEventListener(NOTICES_CHANGED, load) }
   }, [load, reloadKey])
-  const dismiss = useCallback((n: Notice) => {
-    setList((l) => l?.filter((x) => !(x.id === n.id && x.project === n.project)) ?? null)
-    dismissNotice(n.project, n.id).finally(() => window.dispatchEvent(new Event(NOTICES_CHANGED)))
+  const dismissAll = useCallback((targets: Notice[]) => {
+    const gone = new Set(targets.map((n) => `${n.project}:${n.id}`))
+    setList((l) => l?.filter((x) => !gone.has(`${x.project}:${x.id}`)) ?? null)
+    Promise.allSettled(targets.map((n) => dismissNotice(n.project, n.id)))
+      .finally(() => window.dispatchEvent(new Event(NOTICES_CHANGED)))
   }, [])
-  return { list, dismiss }
+  const dismiss = useCallback((n: Notice) => dismissAll([n]), [dismissAll])
+  return { list, dismiss, dismissAll }
 }
 
-/** 알림 한 줄: 제목을 누르면 그 화면으로(알림은 남김), '확인'(✓)을 누르면 그 화면으로 가면서 알림을 지운다 */
+/** 알림 한 줄: 내용을 누르면 그 화면으로(알림은 남김), ✓(읽음으로 표시)를 누르면 이동 없이 알림만 지운다 */
 export function NoticeItem({ n, navigate, onDismiss, compact, showProject }: {
   n: Notice; navigate: ShellBase['navigate']; onDismiss: (n: Notice) => void; compact?: boolean; showProject?: boolean
 }) {
@@ -53,9 +56,9 @@ export function NoticeItem({ n, navigate, onDismiss, compact, showProject }: {
           </span>
         </span>
       </button>
-      <button type="button" onClick={() => { onDismiss(n); go() }} aria-label={`확인하고 이동: ${n.title}`} title="확인: 이 화면으로 가고 알림을 지움"
+      <button type="button" onClick={() => onDismiss(n)} aria-label={`읽음으로 표시: ${n.title}`} title="읽음으로 표시"
         className={cx('shrink-0 rounded-md text-fg-3 hover:bg-sunken hover:text-fg', compact ? 'mt-1 p-1' : 'mt-2 inline-flex items-center gap-1 px-2 py-1 text-small')}>
-        <Check size={compact ? 13 : 14} aria-hidden="true" />{!compact && '확인하고 이동'}
+        <Check size={compact ? 13 : 14} aria-hidden="true" />{!compact && '읽음'}
       </button>
     </li>
   )
@@ -63,17 +66,30 @@ export function NoticeItem({ n, navigate, onDismiss, compact, showProject }: {
 
 /** 왼쪽 사이드바 '알림' (설계 버전 위): 보고 있는 프로젝트가 있으면 그 프로젝트, 없으면 내 알림 전체 */
 export function SidebarNotices({ navigate, project }: { navigate: ShellBase['navigate']; project?: string }) {
-  const { list, dismiss } = useNotices(project)
+  const { list, dismiss, dismissAll } = useNotices(project)
   const shown = (list ?? []).filter((n) => !project || n.project === project)
   return (
     <section aria-labelledby="side-notices">
-      <h2 id="side-notices" className="eyebrow mb-1 flex items-center justify-between px-3">
-        <span>알림</span>{shown.length > 0 && <span className="rounded-full bg-danger px-1.5 text-micro text-card tabular-nums">{shown.length}</span>}
-      </h2>
+      <div className="mb-1 flex items-center justify-between gap-2 px-3">
+        <h2 id="side-notices" className="eyebrow flex items-center gap-1.5">
+          <span>알림</span>{shown.length > 0 && <span className="rounded-full bg-danger px-1.5 text-micro text-card tabular-nums">{shown.length}</span>}
+        </h2>
+        {shown.length > 0 && <MarkAllRead onClick={() => dismissAll(shown)} />}
+      </div>
       {list === null ? <p className="px-3 text-micro text-fg-3">불러오는 중…</p>
         : shown.length === 0 ? <p className="px-3 text-micro text-fg-3">새 알림이 없습니다.</p>
         : <ul className="max-h-64 space-y-0.5 overflow-y-auto">{shown.slice(0, 20).map((n) => (
             <NoticeItem key={`${n.project}:${n.id}`} n={n} navigate={navigate} onDismiss={dismiss} compact showProject={!project} />))}</ul>}
     </section>
+  )
+}
+
+/** 모두 읽음으로 표시: 보이는 알림을 한 번에 지운다 */
+export function MarkAllRead({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} title="모두 읽음으로 표시"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-micro text-fg-3 hover:bg-sunken hover:text-fg">
+      <Checks size={12} aria-hidden="true" />모두 읽음
+    </button>
   )
 }
