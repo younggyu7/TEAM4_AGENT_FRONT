@@ -1,4 +1,4 @@
-import { Check, Files } from '@phosphor-icons/react'
+import { Check, CircleNotch, Files } from '@phosphor-icons/react'
 import { formatDate } from '../../labels'
 import type { VersionRecord } from '../../types'
 import { isDocPage, type Page, type StagePage } from '../lib/route'
@@ -39,7 +39,7 @@ function checkStatus(d?: Develop): { text: string; tone: Tone; done: boolean } {
  * 최종 개발물 화면의 1단계 개발(4), 2단계 실행·자동 확인(5), 3단계 Git(6)으로 간다.
  * '산출물 보기'는 단계가 아니라 지금 버전의 산출물(판단 기록·이슈·추적 …)을 읽기만 하는 화면이라 단계 줄 밖 버튼으로 둔다.
  */
-export function StageStepper({ page, focus, version, targets, finalized, decision, onGo, develop, git }: {
+export function StageStepper({ page, focus, version, targets, finalized, decision, onGo, develop, git, busy }: {
   page: Page
   /** 최종 개발물 화면의 안쪽 단계 ('1'·'2'·'3', 예전 주소 'check'는 2단계) */
   focus?: string
@@ -53,6 +53,8 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
   develop?: Develop
   /** 최종본을 원격 git에 올린 기록 */
   git?: VersionRecord['git']
+  /** 지금 돌고 있는 작업 (개발·자동 확인·원격 올리기): 그 칸은 완료 표시 대신 도는 표시 */
+  busy?: 'develop' | 'check' | 'git'
 }) {
   const done = (id: StagePage) => Boolean(finalized[id])
   const approved = decision?.decision === 'approve'
@@ -60,7 +62,7 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
   const devStep = focus === '3' ? 'run' : focus === '2' || focus === 'check' ? 'check' : 'build'
   const check = checkStatus(develop)
   const steps: { key: string; label: string; screen: string; status: string; tone: Tone; done: boolean; current: boolean
-    locked?: string; go: () => void }[] = [
+    locked?: string; spin?: boolean; go: () => void }[] = [
     { key: 'spec', label: '요구사항 분석', screen: `기능 명세 ${versionLabel('spec', targets, done('final'))}`,
       status: done('spec') ? `확정 ${short(finalized.spec)}` : '진행 중', tone: done('spec') ? 'ok' : 'muted',
       done: done('spec'), current: page === 'spec', go: () => onGo('spec') },
@@ -72,16 +74,18 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
         : done('final') ? '최종 확정 · 승인 전' : done('erd') ? '최종 확정 전' : '앞 단계 확정 전',
       tone: approved ? 'ok' : 'muted', done: approved, current: page === 'final', go: () => onGo('final') },
     { key: 'build', label: '개발 진행', screen: '최종 개발하기',
-      status: !approved ? '최종 승인 후' : develop?.at ? `개발 ${short(develop.at)}` : '개발 대기',
-      tone: develop?.at ? 'ok' : 'muted', done: Boolean(develop?.at), current: onDevelop && devStep === 'build',
+      status: !approved ? '최종 승인 후' : busy === 'develop' ? '개발 중…' : develop?.at ? `개발 ${short(develop.at)}` : '개발 대기',
+      tone: busy !== 'develop' && develop?.at ? 'ok' : 'muted', done: busy !== 'develop' && Boolean(develop?.at), spin: busy === 'develop',
+      current: onDevelop && devStep === 'build',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '1') },
     { key: 'check', label: '테스트(검증)', screen: '실행 · 자동 확인',
-      status: !approved ? '최종 승인 후' : check.text, tone: approved ? check.tone : 'muted', done: approved && check.done,
+      status: !approved ? '최종 승인 후' : busy === 'check' ? '확인 중…' : check.text, tone: approved && busy !== 'check' ? check.tone : 'muted',
+      done: approved && check.done && busy !== 'check', spin: busy === 'check',
       current: onDevelop && devStep === 'check',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '2') },
     { key: 'run', label: '실행·마무리', screen: 'Git',
-      status: !approved ? '최종 승인 후' : !develop ? '개발 후' : git ? `Git 올림 ${short(git.at)}` : 'Git 올리기 전',
-      tone: git ? 'ok' : 'muted', done: Boolean(git), current: onDevelop && devStep === 'run',
+      status: !approved ? '최종 승인 후' : busy === 'git' ? '올리는 중…' : !develop ? '개발 후' : git ? `Git 올림 ${short(git.at)}` : 'Git 올리기 전',
+      tone: git && busy !== 'git' ? 'ok' : 'muted', done: Boolean(git) && busy !== 'git', spin: busy === 'git', current: onDevelop && devStep === 'run',
       locked: approved ? undefined : '개발 범위 확정에서 최종 승인하면 열립니다', go: () => onGo('develop', '3') },
   ]
   return (
@@ -94,6 +98,7 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
                 type="button"
                 disabled={Boolean(s.locked)}
                 aria-current={s.current ? 'step' : undefined}
+                aria-busy={s.spin || undefined}
                 onClick={s.go}
                 title={s.locked ? undefined : `${i + 1}. ${s.label} · ${s.screen} · ${s.status}`}
                 className={cx(
@@ -107,10 +112,10 @@ export function StageStepper({ page, focus, version, targets, finalized, decisio
                     aria-hidden="true"
                     className={cx(
                       'inline-flex size-5 shrink-0 items-center justify-center rounded text-micro font-semibold tabular-nums',
-                      s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
+                      s.spin ? 'bg-info-soft text-info' : s.done ? 'bg-ok text-card' : s.current ? 'bg-primary text-on-primary' : 'bg-sunken text-fg-3',
                     )}
                   >
-                    {s.done ? <Check size={12} weight="bold" /> : i + 1}
+                    {s.spin ? <CircleNotch size={12} weight="bold" className="animate-spin motion-reduce:animate-none" /> : s.done ? <Check size={12} weight="bold" /> : i + 1}
                   </span>
                   <span className={cx('min-w-0 text-label leading-tight break-keep', s.current ? 'font-semibold' : 'font-medium text-fg-2')}>
                     {s.label}

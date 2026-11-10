@@ -15,6 +15,7 @@ export const NOTICE_KIND: Record<Notice['kind'], { tone: Tone; label: string }> 
   uploaded: { tone: 'neutral', label: '분석 완료' }, spec_redone: { tone: 'info', label: '다시 만듦' }, erd_draft: { tone: 'neutral', label: 'ERD 초안' }, developed: { tone: 'ok', label: '개발 초안' },
   merge_request: { tone: 'info', label: '합치기 요청' }, merged: { tone: 'ok', label: '합치기 완료' }, merge_rejected: { tone: 'danger', label: '합치기 반려' },
   task_assigned: { tone: 'warn', label: '작업 배정' }, released: { tone: 'ok', label: '릴리스' },
+  develop_failed: { tone: 'danger', label: '개발 실패' },
 }
 
 /** 나에게 온 알림: 화면을 열 때, 30초마다, 알림이 바뀌었을 때 다시 읽는다. dismiss는 확인(나에게서만 지움) */
@@ -42,12 +43,12 @@ export function NoticeItem({ n, navigate, onDismiss, compact, showProject }: {
   const go = () => navigate({ name: 'workspace', project: n.project, version: n.version, page: n.page })
   return (
     <li className={cx('flex items-start gap-1', compact ? 'rounded-md hover:bg-sunken' : '')}>
-      <button type="button" onClick={go} title="이 화면으로 (알림은 남김)"
+      <button type="button" onClick={go} title={n.kind === 'develop_failed' ? n.detail : '이 화면으로 (알림은 남김)'}
         className={cx('flex min-w-0 flex-1 items-start gap-2 rounded-md text-left', compact ? 'px-2 py-1.5' : 'px-3 py-2.5 hover:bg-sunken')}>
         {compact ? <BellSimple size={13} className="mt-0.5 shrink-0 text-fg-3" aria-hidden="true" /> : <Badge tone={kind.tone}>{kind.label}</Badge>}
         <span className="min-w-0 flex-1">
           <span className={cx('block font-medium', compact ? 'text-small leading-snug' : 'truncate text-label')}>{n.title}</span>
-          <span className={cx('block text-fg-3', compact ? 'text-micro' : 'truncate text-small')}>
+          <span className={cx('block text-fg-3', compact ? 'text-micro' : n.kind === 'develop_failed' ? 'line-clamp-6 whitespace-pre-line break-all text-small' : 'truncate text-small')}>
             {[showProject ? n.project : '', compact ? kind.label : n.detail, formatDate(n.at)].filter(Boolean).join(' · ')}
           </span>
         </span>

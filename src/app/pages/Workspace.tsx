@@ -296,7 +296,8 @@ function WorkspaceReady({ shell, route, design, trail }: { shell: ShellBase; rou
     >
       <p className="sr-only">v{route.version} · {formatDate(design.meta.generated_at)} 생성</p>
       <StageStepper page={route.page} focus={route.focus} version={route.version} targets={targets} finalized={finalized}
-        decision={finalRecord?.approval} onGo={(p, f) => open(p, f)} develop={finalRecord?.develop} git={finalRecord?.git} />
+        decision={finalRecord?.approval} onGo={(p, f) => open(p, f)} develop={finalRecord?.develop} git={finalRecord?.git}
+        busy={job?.status === 'running' && (job.source === 'develop' || job.source === 'check' || job.source === 'git') ? job.source : undefined} />
       {/* 기술 스택: 원문이 정했으면 그대로 따르고, 개발 틀이 없는 스택이면 여기서부터 알린다 (고르는 건 확인 질문 TQ-001) */}
       {route.page === 'spec' && <StackNote project={route.project} version={route.version} hideWhenPending className="mb-4" />}
       {lockReason && (

@@ -73,7 +73,7 @@ export interface Notice {
   project: string
   /** 상태 알림(수정 지시·대기·승인 요청·승인 대기·개발 대기·반려) / 일 알림(업로드 분석 완료·기능 명세 다시 만듦·ERD 초안·개발 초안) */
   kind: 'directive' | 'waiting' | 'request' | 'decide' | 'develop' | 'rejected' | 'uploaded' | 'spec_redone' | 'erd_draft' | 'developed'
-    | 'merge_request' | 'merged' | 'merge_rejected' | 'task_assigned' | 'released'
+    | 'merge_request' | 'merged' | 'merge_rejected' | 'task_assigned' | 'released' | 'develop_failed'
   at: string
   page: 'spec' | 'erd' | 'final' | 'develop'
   version: string
