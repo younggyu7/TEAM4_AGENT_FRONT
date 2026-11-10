@@ -56,8 +56,8 @@ export function SpecEditor({ draft, items, focus, onFocus, finalizedAt, version,
     <Card aria-labelledby="spec-title" className="flex flex-col">
       <CardHeader
         level={1}
-        eyebrow={`Draft · v${version}`}
-        title="기능 명세서 초안"
+        eyebrow={`Spec · v${version}`}
+        title="기능 명세서"
         titleId="spec-title"
         actions={saving.button}
       >
