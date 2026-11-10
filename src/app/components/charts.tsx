@@ -31,6 +31,8 @@ export interface TokenBar {
   output: number
   calls: number
   current?: boolean
+  /** 그 막대의 비용 (마우스를 올리면 보인다) */
+  cost?: string
 }
 
 export function TokenBars({ bars, height = 132, caption }: { bars: TokenBar[]; height?: number; caption: string }) {
@@ -53,7 +55,7 @@ export function TokenBars({ bars, height = 132, caption }: { bars: TokenBar[]; h
             <div className="rounded-md border border-line bg-card px-3 py-2 text-small tabular-nums">
               <p className="font-semibold text-fg">{shown.label}{shown.sub && <span className="font-normal text-fg-3"> · {shown.sub}</span>}</p>
               <p className="text-fg-2">입력 {fmt(shown.input)} · 출력 {fmt(shown.output)}</p>
-              <p className="text-fg-3">호출 {fmt(shown.calls)}회</p>
+              <p className="text-fg-3">호출 {fmt(shown.calls)}회{shown.cost && <> · <span className="font-medium text-fg-2">{shown.cost}</span></>}</p>
             </div>
           )}
         </div>

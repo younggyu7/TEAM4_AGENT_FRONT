@@ -587,6 +587,8 @@ export interface Job {
   log: string[]
   new_version?: string
   warnings?: string[]
+  /** 실패는 아니고 사람이 확인할 것 (충족 못 한 완료 조건) */
+  checks?: string[]
   started_at: string
   finished_at?: string
 }

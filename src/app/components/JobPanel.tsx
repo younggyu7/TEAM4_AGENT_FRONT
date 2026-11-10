@@ -23,7 +23,8 @@ export function JobPanel({ job, project, onOpen, current }: {
 
   const running = job.status === 'running'
   const warn = job.status === 'done' && Boolean(job.warnings?.length)
-  const tone = running ? 'border-info/40' : job.status === 'failed' ? 'border-danger/40' : warn ? 'border-warn/40' : 'border-ok/40'
+  const needs = job.status === 'done' && !warn && Boolean(job.checks?.length)   // 실패 아님: 사람이 확인할 것만 남음
+  const tone = running ? 'border-info/40' : job.status === 'failed' ? 'border-danger/40' : warn ? 'border-warn/40' : needs ? 'border-info/40' : 'border-ok/40'
   const steps = job.log.filter((l) => /^\s*(\d\d:\d\d:\d\d\s+)?(#\d+|\[|다시 설계|사용자 수정|데이터 설계 다시)/.test(l)).slice(-6)
 
   return (
@@ -32,7 +33,7 @@ export function JobPanel({ job, project, onOpen, current }: {
         <div className="min-w-0">
           <p className="eyebrow">{job.source === 'run' ? 'Upload · 원본 요구서 → 요구사항·기능 명세 초안' : job.source === 'answers' ? 'Answers · 확인 질문 답 → 기능 명세' : job.source === 'spec' ? 'Export · 기능 명세 → ERD' : job.source === 'review' ? 'Final · ERD 최종 확정 → 최종본' : job.source === 'check' ? 'Check · 자동 확인' : job.source === 'develop' ? 'Develop · 최종본 → 서비스 코드·미리보기' : job.source === 'git' ? 'Git · 서버 코드 → 화면·백엔드 저장소' : 'New version · ERD'}</p>
           <h2 id="job-title" role="status" className={cx('mt-1 flex items-center gap-2 text-subtitle font-medium',
-            job.status === 'failed' && 'text-danger', warn && 'text-warn', job.status === 'done' && !warn && 'text-ok')}>
+            job.status === 'failed' && 'text-danger', warn && 'text-warn', needs && 'text-info', job.status === 'done' && !warn && !needs && 'text-ok')}>
             {running && <CircleNotch size={20} className="animate-spin" aria-hidden="true" />}
             {job.status === 'done' && !warn && <CheckCircle size={20} weight="fill" aria-hidden="true" />}
             {(job.status === 'failed' || warn) && <WarningCircle size={20} aria-hidden="true" />}
@@ -74,6 +75,12 @@ export function JobPanel({ job, project, onOpen, current }: {
           <ul className="max-h-40 list-disc space-y-1 overflow-auto rounded-md bg-warn-soft py-2 pr-3 pl-7 text-small text-warn">
             {job.warnings.map((w) => <li key={w}>{w}</li>)}
           </ul>
+        )}
+        {job.checks && job.checks.length > 0 && (
+          <div className="rounded-md bg-info-soft px-3 py-2 text-small text-info">
+            <p className="font-medium">필수 확인 {job.checks.length}건 — 산출물은 정상으로 만들어졌고, 확인 필요 탭에서 처리하면 확정할 수 있습니다</p>
+            <ul className="mt-1 max-h-40 list-disc space-y-0.5 overflow-auto pl-5">{job.checks.map((c) => <li key={c}>{c}</li>)}</ul>
+          </div>
         )}
         <details>
           <summary className="min-h-8 text-small text-fg-3">실행 기록 ({job.log.length}줄)</summary>
