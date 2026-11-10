@@ -498,6 +498,20 @@ export interface Approval {
   comment: string
   at: string
   by: { id: number; name: string; role: string }
+  /** 승인: 그때 정한 확인 항목의 답 */
+  resolved?: { id: string; title: string; answer: string }[]
+  /** 승인 뒤 답을 바꾼 기록 */
+  edits?: { at: string; by: { id: number; name: string; role: string } }[]
+}
+
+/** 승인한 최종본의 승인 직전 확인 항목 (editable=false: 예전 승인이라 직전 기록이 없어 답을 바꿀 수 없음) */
+export async function getApprovedItems(project: string, version: string): Promise<{ items: OpenItem[]; editable: boolean }> {
+  return (await (await request(`/projects/open-items?${query({ project, version, approved: 'true' })}`)).json()) as { items: OpenItem[]; editable: boolean }
+}
+
+/** 승인한 최종본의 확인 항목 답 바꾸기: 승인은 그대로, 개발 스펙 10개를 다시 쓴다 (LLM 없음) */
+export async function reanswerApproval(project: string, version: string, answers: Record<string, string>): Promise<Approval> {
+  return ((await (await post('/projects/approval/answers', { project, version, answers })).json()) as { approval: Approval }).approval
 }
 
 /** 최종 승인 전에 남은 확인 항목 (recommended가 비면 답을 적어야 승인된다) */

@@ -1,6 +1,6 @@
-import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, SealCheck, WarningCircle } from '@phosphor-icons/react'
+import { ArrowBendUpLeft, Copy, DownloadSimple, Eye, FileText, Check, PencilSimple, SealCheck, WarningCircle } from '@phosphor-icons/react'
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { decideFinal, fillDevSpec, getOpenItems, targetsOf, type Approval, type ChangeItem, type Job, type OpenItem } from '../../api'
+import { decideFinal, fillDevSpec, getApprovedItems, getOpenItems, reanswerApproval, targetsOf, type Approval, type ChangeItem, type Job, type OpenItem } from '../../api'
 import { formatDate, issueKindLabel } from '../../labels'
 import type { Design, Issue, VersionRecord } from '../../types'
 import { Badge, Button, Card, CardHeader, Checkbox, cx, Empty, ErrorNote, fmt, Label, Loading, TextArea, TextInput } from '../components/ui'
@@ -122,13 +122,35 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided, 
   const last = record.approval
   const [openItems, setOpenItems] = useState<OpenItem[] | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})   // 항목 ID → 고른 답 (없으면 추천안)
+  // 승인 뒤: 승인한 항목을 그대로 보이고(수정 안 됨) '수정'을 눌러야 답을 바꾼다. editable=false면 예전 승인이라 바꿀 수 없음
+  const [editable, setEditable] = useState(false)
+  const [editing, setEditing] = useState(false)
   useEffect(() => {
-    if (last?.decision === 'approve') return
     let alive = true
-    getOpenItems(project, version).then((r) => { if (alive) setOpenItems(r) }).catch((e) => { if (alive) setError((e as Error).message) })
+    setEditing(false)
+    setAnswers({})
+    const load = last?.decision === 'approve'
+      ? getApprovedItems(project, version).then((r) => { if (alive) { setOpenItems(r.items); setEditable(r.editable) } })
+      : getOpenItems(project, version).then((r) => { if (alive) setOpenItems(r) })
+    load.catch((e) => { if (alive) setError((e as Error).message) })
     return () => { alive = false }
-  }, [project, version, last?.decision])
-  const answerOf = (i: OpenItem) => answers[i.id] ?? i.recommended
+  }, [project, version, last?.decision, last?.edits?.length])
+  const approvedAnswer = Object.fromEntries((last?.decision === 'approve' ? last.resolved ?? [] : []).map((r) => [r.id, r.answer]))
+  const answerOf = (i: OpenItem) => answers[i.id] ?? approvedAnswer[i.id] ?? i.recommended
+  const saveAnswers = async () => {
+    setSending(true)
+    setError('')
+    try {
+      await reanswerApproval(project, version, Object.fromEntries((openItems ?? []).map((i) => [i.id, answerOf(i)])))
+      setEditing(false)
+      refreshVersion(project, version)
+      onDecided()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSending(false)
+    }
+  }
   const unanswered = (openItems ?? []).filter((i) => !answerOf(i).trim()).length
   const picked = Object.values(items)
   const send = async (decision: 'approve' | 'changes') => {
@@ -174,7 +196,49 @@ function DecisionCard({ project, version, record, design, canDecide, onDecided, 
         {approved && (
           <p className="flex items-center gap-1.5 text-label font-semibold text-ok">
             <SealCheck size={18} weight="fill" aria-hidden="true" />승인 완료
+            {last.edits?.length ? <span className="text-small font-normal text-fg-3">· 승인 뒤 답 수정 {last.edits.at(-1)!.by.name} {formatDate(last.edits.at(-1)!.at)}</span> : null}
           </p>
+        )}
+        {approved && openItems && (
+          <section aria-label="승인한 확인 항목" className="space-y-2 rounded-md border border-line bg-card p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-label font-semibold">승인한 확인 항목 {editable ? openItems.length : last.resolved?.length ?? 0}건
+                <span className="font-normal text-fg-3"> · {editing ? '답을 바꾸고 저장하면 개발 스펙을 다시 씁니다 (승인은 그대로)' : '승인할 때 정한 답'}</span></h3>
+              {canDecide && editable && openItems.length > 0 && !editing && mode === 'idle' && (
+                <Button size="sm" variant="secondary" icon={<PencilSimple />} onClick={() => setEditing(true)}>수정</Button>
+              )}
+            </div>
+            {openItems.length === 0
+              ? (!editable && (last.resolved?.length ?? 0) > 0 ? null : <p className="text-small text-fg-3">승인할 때 남은 확인 항목이 없었습니다.</p>)
+              : editing ? (
+                <ul className="max-h-96 space-y-2 overflow-auto">
+                  {openItems.map((i) => <OpenItemRow key={i.id} item={i} value={answerOf(i)} onChange={(v) => setAnswers((a) => ({ ...a, [i.id]: v }))} />)}
+                </ul>
+              ) : (
+                <ul className="max-h-96 space-y-1.5 overflow-auto">
+                  {openItems.map((i) => (
+                    <li key={i.id} className="text-small">
+                      <p className="font-medium">{i.title}</p>
+                      <p className="text-fg-2">→ {answerOf(i) || '—'}{answerOf(i) === i.recommended ? <span className="text-fg-3"> (추천안)</span> : null}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            {!editable && openItems.length === 0 && (last.resolved?.length ?? 0) > 0 && (
+              <ul className="space-y-1 text-small">{last.resolved!.map((r) => <li key={r.id}><span className="font-medium">{r.title}</span> → {r.answer}</li>)}</ul>
+            )}
+            {!editable && canDecide && <p className="text-micro text-fg-3">예전에 승인한 최종본이라 승인한 답을 바꿀 수 없습니다. 바꾸려면 '승인 거두고 수정 지시'를 쓰세요.</p>}
+            {editing && (
+              <>
+                {record.develop && <p className="rounded-md bg-warn-soft px-2.5 py-1.5 text-small text-warn">이미 개발한 코드는 바뀌지 않습니다. 저장한 뒤 다시 개발하면 바뀐 스펙으로 만듭니다.</p>}
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="ghost" disabled={sending} onClick={() => { setEditing(false); setAnswers({}) }}>취소</Button>
+                  <Button size="sm" variant="primary" disabled={sending || unanswered > 0} onClick={() => void saveAnswers()}
+                    title={unanswered > 0 ? `답을 적어야 하는 항목이 ${unanswered}건 남았습니다` : undefined}>{sending ? '다시 쓰는 중…' : '저장'}</Button>
+                </div>
+              </>
+            )}
+          </section>
         )}
         {!approved && last?.decision === 'changes' && (last.items?.length ?? 0) > 0 && (
           <ul className="space-y-0.5 rounded-md bg-warn-soft px-3 py-2 text-small">
@@ -323,7 +387,7 @@ function ItemPicker({ title, stage, options, items, onToggle }: {
 /** 남은 확인 항목 한 줄: 선택지(추천 표시)를 고르거나 직접 적는다 */
 function OpenItemRow({ item, value, onChange }: { item: OpenItem; value: string; onChange: (value: string) => void }) {
   const choices = [...new Set([item.recommended, ...item.options].filter(Boolean))]
-  const [typing, setTyping] = useState(choices.length === 0)
+  const [typing, setTyping] = useState(choices.length === 0 || (Boolean(value) && !choices.includes(value)))
   return (
     <li className="text-small">
       <p className="font-medium">{item.title}</p>
