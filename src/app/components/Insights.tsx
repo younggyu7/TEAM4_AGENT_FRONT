@@ -256,22 +256,55 @@ function TokenCard({ usages, version, elapsed }: { usages: Load<VersionUsage[]>;
   )
 }
 
+// 심각도 안내 (이름을 누르면 작은 팝업으로). 심각도는 이슈 종류마다 검사 규칙이 정한다 (의미 검토 지적은 경고)
+const SEVERITY_GUIDE: Record<string, { title: string; what: string; examples: string }> = {
+  e: { title: '오류', what: "꼭 고쳐야 하는 구조 문제입니다. Agent가 다음 단계 전에 자동으로 고치려 하고, 남으면 'Agent 완료 조건'이 통과하지 않습니다.",
+       examples: '기본키(PK) 없음 · 없는 테이블을 가리키는 FK · 저장 테이블이 없는 기능 · DDL 검증 실패' },
+  w: { title: '경고', what: '사람이 확인할 것입니다. 자동으로 고치지 않으며, 내용을 보고 반영하거나 문제 아님으로 넘깁니다.',
+       examples: '원문에서 인용문을 못 찾음 · 문서 품질(중복 코드·빈 세부내용) · 값 출처·상태 전환 미정 · 의미 검토(AI) 지적' },
+  i: { title: '참고', what: '알고만 있으면 되는 기록입니다. 확정을 막지 않습니다.',
+       examples: '기능과 연결되지 않은 테이블 · 중복 경로 · 속성 설계 재요청 기록 · 사용자 수정 반영 기록' },
+}
+
 function IssuesCard({ design }: { design: Design }) {
   const open = design.issues.filter((i) => i.status !== 'RESOLVED')
   const count = (s: string) => open.filter((i) => i.severity === s).length
+  const [picked, setPicked] = useState<string>()
+  const guide = picked ? SEVERITY_GUIDE[picked] : undefined
+  useEffect(() => {
+    if (!picked) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPicked(undefined) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [picked])
   return (
     <Card aria-labelledby="issues-title">
       <CardHeader eyebrow="Review" title="열린 검토 지적" titleId="issues-title" actions={<span className="text-label font-medium tabular-nums">{open.length}건</span>} />
-      <div className="px-5 pb-5">
+      <div className="relative px-5 pb-5">
         {open.length === 0 ? <p className="text-small text-fg-3">열린 지적이 없습니다.</p> : (
           <BarList
             total={open.length}
+            onPick={(key) => setPicked(picked === key ? undefined : key)}
+            picked={picked}
             rows={[
               { key: 'e', label: '오류', value: count('ERROR'), tone: 'danger', icon: <WarningOctagon weight="bold" aria-hidden="true" /> },
               { key: 'w', label: '경고', value: count('WARNING'), tone: 'warn', icon: <Warning weight="bold" aria-hidden="true" /> },
               { key: 'i', label: '참고', value: count('INFO'), tone: 'info', icon: <Info weight="bold" aria-hidden="true" /> },
             ]}
           />
+        )}
+        {guide && (
+          <div role="dialog" aria-label={`${guide.title} 안내`}
+            className="absolute inset-x-5 top-full z-50 -mt-3 rounded-md border border-line bg-card p-3 text-small shadow-lg">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold">{guide.title}</p>
+              <button type="button" onClick={() => setPicked(undefined)} aria-label="안내 닫기"
+                className="rounded-sm px-1 text-fg-3 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15">✕</button>
+            </div>
+            <p className="mt-1 text-fg-2">{guide.what}</p>
+            <p className="mt-2 text-fg-3">예: {guide.examples}</p>
+            <p className="mt-2 text-fg-3">내용은 각 화면의 '확인 필요' 탭이나 산출물 메뉴의 '이슈'에서 봅니다.</p>
+          </div>
         )}
       </div>
     </Card>

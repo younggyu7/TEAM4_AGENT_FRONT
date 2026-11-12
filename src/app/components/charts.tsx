@@ -178,16 +178,24 @@ export function TokenRows({ rows, caption }: { rows: { key: string; label: strin
 }
 
 /* ------------------------------------------------------------ 가로 막대 목록 (분류별 개수) */
-export function BarList({ rows, total }: {
+export function BarList({ rows, total, onPick, picked }: {
   rows: { key: string; label: string; value: number; tone: 'danger' | 'warn' | 'info' | 'neutral'; icon?: ReactNode }[]
   total: number
+  onPick?: (key: string) => void   // 있으면 이름을 눌러 안내를 연다
+  picked?: string
 }) {
   const fill = { danger: 'bg-danger', warn: 'bg-warn', info: 'bg-info', neutral: 'bg-fg-3' }
   return (
     <ul className="space-y-2.5">
       {rows.map((r) => (
         <li key={r.key} className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)_2.5rem] items-center gap-3 text-small">
-          <span className="inline-flex items-center gap-1.5 text-fg-2 [&>svg]:size-3.5">{r.icon}{r.label}</span>
+          {onPick ? (
+            <button type="button" onClick={() => onPick(r.key)} aria-expanded={picked === r.key}
+              className={cx('inline-flex items-center gap-1.5 justify-self-start rounded-sm text-fg-2 underline decoration-dotted underline-offset-4 [&>svg]:size-3.5',
+                'hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-fg/15', picked === r.key && 'text-fg')}>
+              {r.icon}{r.label}
+            </button>
+          ) : <span className="inline-flex items-center gap-1.5 text-fg-2 [&>svg]:size-3.5">{r.icon}{r.label}</span>}
           <span className="h-2 overflow-hidden rounded-[2px] bg-sunken">
             <span className={cx('block h-full rounded-[2px]', fill[r.tone])} style={{ width: `${total ? (r.value / total) * 100 : 0}%` }} />
           </span>
